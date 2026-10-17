@@ -1,12 +1,16 @@
-import { Hono } from "hono";
+import { drizzle } from "drizzle-orm/bun-sqlite";
 
-import { migrate } from "./db/migrate";
+import { createApp } from "./app";
+import * as schema from "./db/schema";
+import { getSqlite } from "./db/db";
+import { ensureInitUser } from "./auth/init-user";
 
-migrate();
+// 启动：文件库 + 建表 + 初始账号
+const sqlite = getSqlite();
+const app = createApp(sqlite);
+await ensureInitUser(drizzle(sqlite, { schema }));
 
-const app = new Hono();
-
-// 健康检查：部署后 nginx 可用它探测后端存活
-app.get("/api/health", (c) => c.json({ ok: true, ts: Date.now() }));
-
-export default app;
+export default {
+  port: Number(process.env.PORT ?? 3000),
+  fetch: app.fetch,
+};
