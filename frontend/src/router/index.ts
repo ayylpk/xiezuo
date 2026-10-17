@@ -10,6 +10,10 @@ const router = createRouter({
     { path: "/works/:id", name: "work", component: () => import("../views/WorkView.vue") },
     { path: "/works/:id/chapters", name: "chapters", component: () => import("../views/ChaptersView.vue") },
     { path: "/works/:id/chapters/:cid", name: "chapter-editor", component: () => import("../views/ChapterEditorView.vue") },
+    { path: "/works/:id/entities", name: "entities", component: () => import("../views/EntitiesView.vue") },
+    { path: "/works/:id/outlines", name: "outlines", component: () => import("../views/OutlinesView.vue") },
+    { path: "/works/:id/foreshadows", name: "foreshadows", component: () => import("../views/ForeshadowsView.vue") },
+    { path: "/works/:id/timeline", name: "timeline", component: () => import("../views/TimelineView.vue") },
     { path: "/:pathMatch(.*)*", redirect: "/" },
   ],
 });

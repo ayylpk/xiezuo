@@ -84,6 +84,15 @@ async function removeWork() {
       </t-space>
     </header>
 
+    <nav class="subnav" v-if="detail">
+      <router-link :to="`/works/${workId}`" exact-active-class="active">概览</router-link>
+      <router-link :to="`/works/${workId}/chapters`" active-class="active">章节</router-link>
+      <router-link :to="`/works/${workId}/entities`" active-class="active">设定库</router-link>
+      <router-link :to="`/works/${workId}/outlines`" active-class="active">大纲</router-link>
+      <router-link :to="`/works/${workId}/foreshadows`" active-class="active">伏笔</router-link>
+      <router-link :to="`/works/${workId}/timeline`" active-class="active">时间线</router-link>
+    </nav>
+
     <main v-if="detail" class="body">
       <h1 class="title">{{ detail.title }}</h1>
       <t-space size="small" class="stats">
@@ -125,6 +134,24 @@ async function removeWork() {
   padding: 12px 32px;
   background: #fff;
   border-bottom: 1px solid var(--td-component-stroke);
+}
+.subnav {
+  display: flex;
+  gap: 4px;
+  padding: 0 32px;
+  background: #fff;
+  border-bottom: 1px solid var(--td-component-stroke);
+}
+.subnav a {
+  padding: 10px 14px;
+  color: var(--td-text-color-secondary);
+  text-decoration: none;
+  border-bottom: 2px solid transparent;
+}
+.subnav a.active {
+  color: var(--td-brand-color);
+  border-bottom-color: var(--td-brand-color);
+  font-weight: 600;
 }
 .body {
   max-width: 960px;
