@@ -9,6 +9,7 @@ import worksRoutes from "./routes/works";
 import chaptersRoutes from "./routes/chapters";
 import entitiesRoutes from "./routes/entities";
 import outlinesRoutes from "./routes/outlines";
+import planningRoutes from "./routes/planning";
 
 /**
  * App 环境类型：所有路由/中间件可 c.get() 的类型安全来源。
@@ -43,6 +44,7 @@ export function createApp(sqlite: Database = new Database(":memory:")) {
   app.route("/api", chaptersRoutes);
   app.route("/api", entitiesRoutes);
   app.route("/api", outlinesRoutes);
+  app.route("/api", planningRoutes);
 
   app.get("/api/health", (c) => c.json({ ok: true, ts: Date.now() }));
   return app;
