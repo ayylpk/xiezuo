@@ -7,6 +7,7 @@ const router = createRouter({
   routes: [
     { path: "/login", name: "login", component: () => import("../views/LoginView.vue"), meta: { public: true } },
     { path: "/", name: "dashboard", component: () => import("../views/DashboardView.vue") },
+    { path: "/search", name: "search", component: () => import("../views/SearchView.vue") },
     { path: "/works/:id", name: "work", component: () => import("../views/WorkView.vue") },
     { path: "/works/:id/chapters", name: "chapters", component: () => import("../views/ChaptersView.vue") },
     { path: "/works/:id/chapters/:cid", name: "chapter-editor", component: () => import("../views/ChapterEditorView.vue") },
@@ -14,6 +15,7 @@ const router = createRouter({
     { path: "/works/:id/outlines", name: "outlines", component: () => import("../views/OutlinesView.vue") },
     { path: "/works/:id/foreshadows", name: "foreshadows", component: () => import("../views/ForeshadowsView.vue") },
     { path: "/works/:id/timeline", name: "timeline", component: () => import("../views/TimelineView.vue") },
+    { path: "/works/:id/notes", name: "notes", component: () => import("../views/NotesView.vue") },
     { path: "/:pathMatch(.*)*", redirect: "/" },
   ],
 });

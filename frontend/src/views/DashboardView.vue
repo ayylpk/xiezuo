@@ -47,6 +47,7 @@ function statusTag(status: Work["status"]) {
     <header class="topbar">
       <span class="brand">写作台</span>
       <t-space>
+        <t-button variant="outline" @click="router.push('/search')">搜索</t-button>
         <t-button theme="primary" @click="dialogVisible = true">+ 新建作品</t-button>
         <t-button variant="text" @click="auth.logout(); router.push('/login')">退出</t-button>
       </t-space>

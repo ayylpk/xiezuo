@@ -69,6 +69,31 @@ async function removeWork() {
     MessagePlugin.error((e as Error).message);
   }
 }
+
+/** 导出：后端返回文件流（非 JSON），直接 fetch + Blob 触发下载，不走 api client */
+async function download(format: string) {
+  try {
+    const resp = await fetch(`/api/works/${workId}/export?format=${format}`, { credentials: "same-origin" });
+    if (!resp.ok) {
+      const body = await resp.json().catch(() => null);
+      throw new Error(body?.error ?? "导出失败");
+    }
+    const blob = await resp.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    const cd = resp.headers.get("content-disposition") ?? "";
+    const m = cd.match(/filename\*=UTF-8''([^;]+)/);
+    a.download = m ? decodeURIComponent(m[1]) : `作品-${workId}.${format}`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    MessagePlugin.success("已开始下载");
+  } catch (e) {
+    MessagePlugin.error((e as Error).message);
+  }
+}
 </script>
 
 <template>
@@ -78,6 +103,16 @@ async function removeWork() {
       <t-tag v-if="detail" theme="primary" variant="light">{{ statusText }}</t-tag>
       <t-space>
         <t-button theme="primary" @click="router.push(`/works/${workId}/chapters`)">写章节</t-button>
+        <t-dropdown @click="(opt: { value: string }) => download(opt.value)">
+          <t-button variant="outline">导出</t-button>
+          <template #dropdown>
+            <t-dropdown-menu>
+              <t-dropdown-item value="md">Markdown</t-dropdown-item>
+              <t-dropdown-item value="txt">纯文本</t-dropdown-item>
+              <t-dropdown-item value="json">JSON（全量数据）</t-dropdown-item>
+            </t-dropdown-menu>
+          </template>
+        </t-dropdown>
         <Popup content="删除整个作品（章节一并删除）">
           <t-button theme="danger" variant="outline" @click="removeWork">删除</t-button>
         </Popup>
@@ -91,6 +126,7 @@ async function removeWork() {
       <router-link :to="`/works/${workId}/outlines`" active-class="active">大纲</router-link>
       <router-link :to="`/works/${workId}/foreshadows`" active-class="active">伏笔</router-link>
       <router-link :to="`/works/${workId}/timeline`" active-class="active">时间线</router-link>
+      <router-link :to="`/works/${workId}/notes`" active-class="active">随笔</router-link>
     </nav>
 
     <main v-if="detail" class="body">
