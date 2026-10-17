@@ -1,4 +1,5 @@
 import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { relations } from "drizzle-orm";
 
 // 时间统一用 epoch 毫秒整数（Date.now() 直通，避免字符串时区歧义）
 
@@ -45,6 +46,15 @@ export const chapters = sqliteTable("chapters", {
   createdAt: integer("created_at").notNull(),
   updatedAt: integer("updated_at").notNull(),
 });
+
+// 关系注册：db.query.* 的 with 查询依赖它（drizzle relational query）
+export const workRelations = relations(works, ({ many }) => ({
+  chapters: many(chapters),
+}));
+
+export const chapterRelations = relations(chapters, ({ one }) => ({
+  work: one(works, { fields: [chapters.workId], references: [works.id] }),
+}));
 
 export type User = typeof users.$inferSelect;
 export type Session = typeof sessions.$inferSelect;

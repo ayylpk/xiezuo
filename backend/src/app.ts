@@ -5,6 +5,7 @@ import { Hono } from "hono";
 import * as schema from "./db/schema";
 import { migrate } from "./db/migrate";
 import authRoutes from "./routes/auth";
+import worksRoutes from "./routes/works";
 
 /**
  * App 环境类型：所有路由/中间件可 c.get() 的类型安全来源。
@@ -33,8 +34,9 @@ export function createApp(sqlite: Database = new Database(":memory:")) {
     await next();
   });
 
-  // 路由前缀统一 /api，M1 先挂鉴权，works/chapters 各自小步挂入
+  // 路由前缀统一 /api
   app.route("/api/auth", authRoutes);
+  app.route("/api/works", worksRoutes);
 
   app.get("/api/health", (c) => c.json({ ok: true, ts: Date.now() }));
   return app;
