@@ -102,6 +102,27 @@ CREATE TABLE IF NOT EXISTS timeline (
   updated_at INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_timeline_work ON timeline(work_id, sort_no);
+
+CREATE TABLE IF NOT EXISTS annotations (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  entity_type TEXT NOT NULL,
+  entity_id   INTEGER NOT NULL,
+  content     TEXT NOT NULL,
+  created_at  INTEGER NOT NULL,
+  updated_at  INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_annotations_target ON annotations(entity_type, entity_id);
+
+CREATE TABLE IF NOT EXISTS notes (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  work_id    INTEGER NOT NULL REFERENCES works(id) ON DELETE CASCADE,
+  type       TEXT NOT NULL DEFAULT 'note',
+  title      TEXT NOT NULL DEFAULT '',
+  content    TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_notes_work ON notes(work_id, type);
 `;
 
 export function migrate(db: Database = getSqlite()) {

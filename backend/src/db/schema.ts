@@ -126,6 +126,49 @@ export const timeline = sqliteTable("timeline", {
   updatedAt: integer("updated_at").notNull(),
 });
 
+// ---------- M3：批注 / 随笔 ----------
+
+/** 通用批注：挂在任意内容实体上（章节/设定/大纲/伏笔/事件/随笔） */
+export const annotations = sqliteTable("annotations", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  entityType: text("entity_type").notNull(), // chapter | entity | outline | foreshadow | timeline | note
+  entityId: integer("entity_id").notNull(),
+  content: text("content").notNull(),
+  createdAt: integer("created_at").notNull(),
+  updatedAt: integer("updated_at").notNull(),
+});
+
+/** 随笔：note 阅读感想 | idea 灵感闪念 | graveyard 废弃段落 */
+export const notes = sqliteTable("notes", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  workId: integer("work_id")
+    .notNull()
+    .references(() => works.id, { onDelete: "cascade" }),
+  type: text("type").notNull().default("note"), // note | idea | graveyard
+  title: text("title").notNull().default(""),
+  content: text("content").notNull(),
+  createdAt: integer("created_at").notNull(),
+  updatedAt: integer("updated_at").notNull(),
+});
+
+export const NOTE_TYPES = {
+  note: "随笔",
+  idea: "灵感",
+  graveyard: "废弃段落",
+} as const;
+export type NoteType = keyof typeof NOTE_TYPES;
+
+/** 批注可挂载的实体类型白名单 → 查存在性用的表 */
+export const ANNOTATION_TARGETS = {
+  chapter: "chapters",
+  entity: "entities",
+  outline: "outlines",
+  foreshadow: "foreshadows",
+  timeline: "timeline",
+  note: "notes",
+} as const;
+export type AnnotationTarget = keyof typeof ANNOTATION_TARGETS;
+
 export const ENTITY_TYPES = {
   character: "人物",
   scene: "场景",
