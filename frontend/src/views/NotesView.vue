@@ -1,14 +1,15 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
-import { useRoute, useRouter } from "vue-router";
-import { MessagePlugin } from "tdesign-vue-next";
+import { useRoute } from "vue-router";
+import { DialogPlugin, MessagePlugin } from "tdesign-vue-next";
 import { marked } from "marked";
 import DOMPurify from "dompurify";
 
 import { NOTE_TYPES, useNotesStore, type Note, type NoteType } from "../stores/notes";
+import WorkShell from "../components/WorkShell.vue";
+import EmptyState from "../components/EmptyState.vue";
 
 const route = useRoute();
-const router = useRouter();
 const store = useNotesStore();
 const workId = Number(route.params.id);
 
@@ -64,99 +65,120 @@ async function save() {
   }
 }
 
-async function removeNote(n: Note) {
-  if (!window.confirm(`删除这条${NOTE_TYPES[n.type]}？`)) return;
-  try {
-    await store.remove(n.id);
-    MessagePlugin.success("已删除");
-  } catch (e) {
-    MessagePlugin.error((e as Error).message);
-  }
+function confirmRemove(n: Note) {
+  const dlg = DialogPlugin.confirm({
+    header: `删除这条${NOTE_TYPES[n.type]}`,
+    body: n.title || "（无题）——删了就真没了，坟场栏也救不回来。",
+    theme: "warning",
+    confirmBtn: { content: "确认删除", variant: "base" },
+    onConfirm: async () => {
+      try {
+        await store.remove(n.id);
+        MessagePlugin.success("已删除");
+      } catch (e) {
+        MessagePlugin.error((e as Error).message);
+      } finally {
+        dlg.destroy();
+      }
+    },
+  });
 }
 
-const typeTheme: Record<string, string> = { note: "primary", idea: "warning", graveyard: "default" };
+/** 类型 → 印章配色：随笔豆绿 / 灵感灯橙 / 坟场灰 */
+const typeStamp: Record<string, string> = { note: "xz-stamp--ongoing", idea: "xz-stamp--finished", graveyard: "xz-stamp--shelved" };
+
+/** 各栏空态的指路话（文案口径：邀请，不道歉） */
+const emptyHint = computed(() => {
+  if (activeType.value === "graveyard") return "写手最该有「废稿坟场」——删掉心疼的段落先进来躺几年，未必真没用";
+  if (activeType.value === "idea") return "灵光一闪马上记，别信脑子能存到明天";
+  return "阅读感想、思路梳理、任何想写的，都丢这里";
+});
 </script>
 
 <template>
-  <div class="page">
-    <header class="topbar">
-      <t-button variant="text" @click="router.push(`/works/${workId}`)">← 作品</t-button>
-      <span class="title">随笔</span>
-      <t-tabs v-model="activeType" class="tabs">
-        <t-tab-panel v-for="(label, key) in NOTE_TYPES" :key="key" :value="key" :label="`${label} ${store.list.filter((n) => n.type === key).length}`" />
-      </t-tabs>
-      <t-button theme="primary" @click="openCreate('note')">+ 新随笔</t-button>
-    </header>
+  <WorkShell>
+    <template #actions>
+      <t-button theme="primary" @click="openCreate(activeType)">+ 新{{ NOTE_TYPES[activeType] }}</t-button>
+    </template>
 
-    <main class="body">
-      <div v-if="filtered.length === 0" class="empty">这一栏还空着。
-        <span v-if="activeType === 'graveyard'">写手最该有"废稿坟场"——删掉心疼的段落先进来躺几年，未必真没用。</span>
-        <span v-else-if="activeType === 'idea'">灵光一闪马上记，别信脑子能存到明天。</span>
-        <span v-else>阅读感想、思路梳理、任何想写的，都丢这里。</span>
-      </div>
-      <t-card v-for="n in filtered" :key="n.id" class="note-card" :bordered="false" :title="n.title || NOTE_TYPES[n.type]">
-        <template #actions>
-          <t-tag :theme="typeTheme[n.type]" variant="light" size="small">{{ NOTE_TYPES[n.type] }}</t-tag>
-          <t-button variant="text" size="small" @click="openEdit(n)">编</t-button>
-          <t-button variant="text" theme="danger" size="small" @click="removeNote(n)">删</t-button>
-        </template>
-        <div class="note-body" v-html="renderMd(n.content)" />
-        <div class="meta">{{ new Date(n.updatedAt).toLocaleString() }}</div>
-      </t-card>
-    </main>
+    <t-tabs v-model="activeType" class="note-tabs">
+      <t-tab-panel v-for="(label, key) in NOTE_TYPES" :key="key" :value="key" :label="`${label} ${store.list.filter((n) => n.type === key).length}`">
+        <div v-if="filtered.length === 0" class="note-empty">
+          <EmptyState :title="`「${label}」还空着`" :hint="emptyHint">
+            <t-button theme="primary" @click="openCreate(key as NoteType)">记第一条</t-button>
+          </EmptyState>
+        </div>
+
+        <div v-else class="note-list">
+          <article v-for="n in filtered" :key="n.id" class="note xz-panel">
+            <header class="note__head">
+              <h3 class="note__title">{{ n.title || NOTE_TYPES[n.type] }}</h3>
+              <span class="xz-stamp" :class="typeStamp[n.type]">{{ NOTE_TYPES[n.type] }}</span>
+              <span class="note__ops">
+                <t-button variant="text" size="small" @click="openEdit(n)">编辑</t-button>
+                <t-button variant="text" theme="danger" size="small" @click="confirmRemove(n)">删除</t-button>
+              </span>
+            </header>
+            <div class="xz-md note__body" v-html="renderMd(n.content)" />
+            <footer class="note__meta">{{ new Date(n.updatedAt).toLocaleString() }}</footer>
+          </article>
+        </div>
+      </t-tab-panel>
+    </t-tabs>
 
     <t-dialog v-model:visible="dialogVisible" :header="editId ? '编辑' : `新${NOTE_TYPES[activeType]}`" width="560" :footer="false">
       <t-input v-model="form.title" label="标题（可选）" maxlength="128" placeholder="不填默认按类型名占位" style="margin-bottom: 12px" />
       <t-textarea v-model="form.content" :autosize="{ minRows: 5, maxRows: 14 }" label="内容（支持 Markdown）" maxlength="20000" style="margin-bottom: 12px" />
       <t-button block theme="primary" @click="save">保存</t-button>
     </t-dialog>
-  </div>
+  </WorkShell>
 </template>
 
 <style scoped>
-.page {
-  min-height: 100%;
+.note-tabs :deep(.t-tabs__nav) {
+  margin-bottom: 16px;
 }
-.topbar {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 12px 32px;
-  background: #fff;
-  border-bottom: 1px solid var(--td-component-stroke);
-}
-.title {
-  font-weight: 600;
-}
-.tabs {
-  flex: 1;
-}
-.body {
-  max-width: 960px;
-  margin: 0 auto;
-  padding: 24px 32px;
+.note-list {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 14px;
 }
-.note-card {
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+.note {
+  padding: 18px 20px 14px;
 }
-.note-body {
-  line-height: 1.7;
-  color: var(--td-text-color-primary);
+.note__head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
 }
-.note-body :deep(p) {
-  margin: 0 0 8px;
+.note__title {
+  margin: 0;
+  font-family: "STKaiti", "KaiTi", "Noto Serif SC", serif;
+  font-size: var(--xz-text-h3);
+  font-weight: 700;
+  color: var(--xz-ink);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
-.meta {
-  margin-top: 12px;
-  font-size: 12px;
-  color: var(--td-text-color-placeholder);
+.note__ops {
+  margin-left: auto;
+  display: flex;
+  gap: 2px;
+  flex-shrink: 0;
 }
-.empty {
-  padding: 60px 0;
-  text-align: center;
-  color: var(--td-text-color-placeholder);
+.note__body {
+  font-size: var(--xz-text-body);
+  color: var(--xz-ink-2);
+}
+.note__body :deep(p:last-child) {
+  margin-bottom: 0;
+}
+.note__meta {
+  margin-top: 10px;
+  font-size: var(--xz-text-xs);
+  color: var(--xz-ink-3);
 }
 </style>

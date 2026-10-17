@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
-import { useRoute, useRouter } from "vue-router";
-import { MessagePlugin } from "tdesign-vue-next";
+import { useRoute } from "vue-router";
+import { DialogPlugin, MessagePlugin } from "tdesign-vue-next";
 
 import { useOutlinesStore, type Outline } from "../stores/outlines";
+import WorkShell from "../components/WorkShell.vue";
+import EmptyState from "../components/EmptyState.vue";
 
 const route = useRoute();
-const router = useRouter();
 const store = useOutlinesStore();
 const workId = Number(route.params.id);
 
@@ -16,15 +17,6 @@ const parentOptions = ref<Outline[]>([]); // 可成为父节点的候选（卷/�
 const form = ref({ title: "", content: "", parentId: null as number | null });
 
 const tree = computed(() => store.tree());
-const depth = (node: Outline) => {
-  let d = 0;
-  let cur: Outline | null = node;
-  while (cur && cur.parentId) {
-    d++;
-    cur = store.outlines.find((o) => o.id === cur!.parentId) ?? null;
-  }
-  return d;
-};
 
 onMounted(() => store.fetchList(workId).catch((e) => MessagePlugin.error(e.message)));
 
@@ -66,53 +58,75 @@ async function save() {
   }
 }
 
-async function removeOutline(o: Outline) {
-  const child = store.outlines.some((x) => x.parentId === o.id);
-  if (!window.confirm(`删除「${o.title}」${child ? "及其全部子节点" : ""}？`)) return;
-  try {
-    await store.remove(o.id);
-    MessagePlugin.success("已删除");
-    store.fetchList(workId);
-  } catch (e) {
-    MessagePlugin.error((e as Error).message);
-  }
+/** 删除节点：有子节点时文案警告连带数量（原生 confirm 换 DialogPlugin） */
+function confirmRemove(o: Outline) {
+  const childCount = store.outlines.filter((x) => x.parentId === o.id).length;
+  const dlg = DialogPlugin.confirm({
+    header: `删除「${o.title}」`,
+    body: childCount > 0 ? `它下面还挂着 ${childCount} 个子节点，会一并删除，不可恢复。` : "这个节点没有子内容，删除不可恢复。",
+    theme: "warning",
+    confirmBtn: { content: "确认删除", variant: "base" },
+    onConfirm: async () => {
+      try {
+        await store.remove(o.id);
+        MessagePlugin.success("已删除");
+        store.fetchList(workId);
+      } catch (e) {
+        MessagePlugin.error((e as Error).message);
+      } finally {
+        dlg.destroy();
+      }
+    },
+  });
 }
 </script>
 
 <template>
-  <div class="page">
-    <header class="topbar">
-      <t-button variant="text" @click="router.push(`/works/${workId}`)">← 作品</t-button>
-      <span class="title">大纲</span>
+  <WorkShell>
+    <template #actions>
       <t-button theme="primary" @click="openCreate()">+ 新建卷</t-button>
-    </header>
+    </template>
 
-    <main class="body">
-      <div v-if="tree.length === 0" class="empty">还没有大纲，点右上角「新建卷」开始（卷 → 章 → 细纲三级）</div>
+    <section class="xz-panel">
+      <EmptyState
+        v-if="tree.length === 0"
+        title="大纲还是白纸"
+        hint="先立一卷，再拆章，最后落到细纲——三级各管各的粒度，写到哪算哪"
+      >
+        <t-button theme="primary" @click="openCreate()">立第一卷</t-button>
+      </EmptyState>
 
-      <!-- 递归渲染：模板内联自引用组件 -->
-      <template v-for="group in tree" :key="group.node.id">
-        <div class="row" :style="{ paddingLeft: depth(group.node) * 24 + 8 + 'px' }">
-          <t-button variant="text" size="small" @click="openEdit(group.node)" class="node-title">{{ group.node.title }}</t-button>
-          <t-button variant="text" size="small" @click="openCreate(group.node.id)">+子</t-button>
-          <t-button variant="text" theme="danger" size="small" @click="removeOutline(group.node)">删</t-button>
-          <span v-if="group.node.content" class="gray">{{ group.node.content.slice(0, 40) }}</span>
-        </div>
-        <template v-for="child in group.children" :key="child.node.id">
-          <div class="row" :style="{ paddingLeft: depth(child.node) * 24 + 8 + 'px' }">
-            <t-button variant="text" size="small" @click="openEdit(child.node)" class="node-title">{{ child.node.title }}</t-button>
-            <t-button variant="text" size="small" @click="openCreate(child.node.id)">+子</t-button>
-            <t-button variant="text" theme="danger" size="small" @click="removeOutline(child.node)">删</t-button>
-            <span v-if="child.node.content" class="gray">{{ child.node.content.slice(0, 40) }}</span>
+      <!-- 递归渲染：模板内联自引用，三层缩进 + 层级导线 -->
+      <div v-else class="tree">
+        <template v-for="group in tree" :key="group.node.id">
+          <div class="node node--vol" :style="{ paddingLeft: 16 + 'px' }">
+            <button class="node__title" @click="openEdit(group.node)">{{ group.node.title }}</button>
+            <span v-if="group.node.content" class="node__preview">{{ group.node.content }}</span>
+            <span class="node__ops">
+              <t-button variant="text" size="small" @click="openCreate(group.node.id)">+子</t-button>
+              <t-button variant="text" theme="danger" size="small" @click="confirmRemove(group.node)">删除</t-button>
+            </span>
           </div>
-          <div v-for="grand in child.children" :key="grand.node.id" class="row" :style="{ paddingLeft: depth(grand.node) * 24 + 8 + 'px' }">
-            <t-button variant="text" size="small" @click="openEdit(grand.node)" class="node-title">{{ grand.node.title }}</t-button>
-            <t-button variant="text" theme="danger" size="small" @click="removeOutline(grand.node)">删</t-button>
-            <span v-if="grand.node.content" class="gray">{{ grand.node.content.slice(0, 40) }}</span>
-          </div>
+          <template v-for="child in group.children" :key="child.node.id">
+            <div class="node node--chap" :style="{ paddingLeft: 40 + 'px' }">
+              <button class="node__title" @click="openEdit(child.node)">{{ child.node.title }}</button>
+              <span v-if="child.node.content" class="node__preview">{{ child.node.content }}</span>
+              <span class="node__ops">
+                <t-button variant="text" size="small" @click="openCreate(child.node.id)">+子</t-button>
+                <t-button variant="text" theme="danger" size="small" @click="confirmRemove(child.node)">删除</t-button>
+              </span>
+            </div>
+            <div v-for="grand in child.children" :key="grand.node.id" class="node node--beat" :style="{ paddingLeft: 64 + 'px' }">
+              <button class="node__title" @click="openEdit(grand.node)">{{ grand.node.title }}</button>
+              <span v-if="grand.node.content" class="node__preview">{{ grand.node.content }}</span>
+              <span class="node__ops">
+                <t-button variant="text" theme="danger" size="small" @click="confirmRemove(grand.node)">删除</t-button>
+              </span>
+            </div>
+          </template>
         </template>
-      </template>
-    </main>
+      </div>
+    </section>
 
     <t-dialog v-model:visible="dialogVisible" :header="editId ? '编辑节点' : '新建节点'" width="520" :footer="false">
       <t-form label-align="top">
@@ -128,52 +142,99 @@ async function removeOutline(o: Outline) {
         <t-button block theme="primary" @click="save">保存</t-button>
       </t-form>
     </t-dialog>
-  </div>
+  </WorkShell>
 </template>
 
 <style scoped>
-.page {
-  min-height: 100%;
+.tree {
+  padding: 6px 0;
 }
-.topbar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 12px 32px;
-  background: #fff;
-  border-bottom: 1px solid var(--td-component-stroke);
-}
-.title {
-  font-weight: 600;
-}
-.body {
-  max-width: 960px;
-  margin: 0 auto;
-  padding: 24px 32px;
-}
-.row {
+
+/* 树节点行：卷有分隔线，层级靠缩进 + 导线（左竖线）表达 */
+.node {
   display: flex;
   align-items: center;
-  gap: 4px;
-  border-bottom: 1px dashed var(--td-component-stroke);
-  padding-top: 2px;
-  padding-bottom: 2px;
+  gap: 12px;
+  padding: 9px 16px 9px 16px;
+  position: relative;
+  transition: background-color 0.14s ease;
 }
-.node-title {
-  font-weight: 500;
+.node:hover {
+  background: var(--xz-panel-2);
 }
-.gray {
-  color: var(--td-text-color-placeholder);
-  font-size: 12px;
-  margin-left: 8px;
+.node--vol {
+  border-top: 1px solid var(--xz-line);
+}
+.node--vol:first-child {
+  border-top: none;
+}
+/* 子层导线：缩进区左侧一条细线，卷末行不拖尾 */
+.node--chap::before,
+.node--beat::before {
+  content: "";
+  position: absolute;
+  left: 26px;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--xz-line);
+}
+.node--beat::before {
+  left: 50px;
+}
+
+.node__title {
+  border: none;
+  background: transparent;
+  padding: 0;
+  cursor: pointer;
+  text-align: left;
+  color: var(--xz-ink);
+  font-family: inherit;
+  outline: none;
+  flex-shrink: 0;
+  max-width: 46%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  max-width: 420px;
 }
-.empty {
-  padding: 60px 0;
-  text-align: center;
-  color: var(--td-text-color-placeholder);
+.node--vol > .node__title {
+  font-family: "STKaiti", "KaiTi", "Noto Serif SC", serif;
+  font-size: var(--xz-text-h3);
+  font-weight: 700;
+  letter-spacing: 0.05em;
+}
+.node--chap > .node__title {
+  font-size: var(--xz-text-body);
+  font-weight: 500;
+}
+.node--beat > .node__title {
+  font-size: var(--xz-text-sm);
+  color: var(--xz-ink-2);
+}
+.node__title:hover {
+  color: var(--xz-green);
+}
+
+.node__preview {
+  flex: 1;
+  min-width: 0;
+  color: var(--xz-ink-3);
+  font-size: var(--xz-text-xs);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.node__ops {
+  flex-shrink: 0;
+  display: flex;
+  gap: 2px;
+  margin-left: auto;
+}
+
+@media (max-width: 720px) {
+  .node__preview {
+    display: none;
+  }
 }
 </style>

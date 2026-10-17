@@ -1,12 +1,13 @@
 <script setup lang="ts">
-import { onMounted, ref } from "vue";
-import { useRoute, useRouter } from "vue-router";
-import { MessagePlugin } from "tdesign-vue-next";
+import { computed, onMounted, ref } from "vue";
+import { useRoute } from "vue-router";
+import { DialogPlugin, MessagePlugin } from "tdesign-vue-next";
 
 import { CHARACTER_SLOTS, ENTITY_TYPES, useEntitiesStore, type Entity, type EntityType } from "../stores/entities";
+import WorkShell from "../components/WorkShell.vue";
+import EmptyState from "../components/EmptyState.vue";
 
 const route = useRoute();
-const router = useRouter();
 const store = useEntitiesStore();
 const workId = Number(route.params.id);
 
@@ -24,6 +25,8 @@ const form = ref({ name: "", content: "", extra: {} as Record<string, string> })
 // 关系网
 const relForm = ref({ fromId: 0, toId: 0, relType: "", note: "" });
 const relDialog = ref(false);
+
+const isRelations = computed(() => activeTab.value === "relations");
 
 async function load() {
   loading.value = true;
@@ -83,15 +86,25 @@ async function save() {
   }
 }
 
-async function removeEntity(e: Entity) {
-  if (!window.confirm(`删除「${e.name}」？关联关系一并清除`)) return;
-  try {
-    await store.remove(e.id);
-    MessagePlugin.success("已删除");
-    load();
-  } catch (err) {
-    MessagePlugin.error((err as Error).message);
-  }
+/** 删除条目：DialogPlugin（关系连带清除要写进确认文案） */
+function confirmRemove(e: Entity) {
+  const dlg = DialogPlugin.confirm({
+    header: `删除「${e.name}」`,
+    body: "与它相关的所有关系也会一并清除，不可恢复。",
+    theme: "warning",
+    confirmBtn: { content: "确认删除", variant: "base" },
+    onConfirm: async () => {
+      try {
+        await store.remove(e.id);
+        MessagePlugin.success("已删除");
+        load();
+      } catch (err) {
+        MessagePlugin.error((err as Error).message);
+      } finally {
+        dlg.destroy();
+      }
+    },
+  });
 }
 
 async function saveRelation() {
@@ -109,57 +122,89 @@ async function saveRelation() {
     MessagePlugin.error((e as Error).message);
   }
 }
+
+function confirmRemoveRelation(r: { id: number; fromName: string; relType: string; toName: string }) {
+  const dlg = DialogPlugin.confirm({
+    header: "解除这条关系",
+    body: `「${r.fromName} —${r.relType}→ ${r.toName}」将被删除。`,
+    theme: "warning",
+    confirmBtn: { content: "解除", variant: "base" },
+    onConfirm: async () => {
+      try {
+        await store.removeRelation(r.id);
+        MessagePlugin.success("已解除");
+        load();
+      } catch (e) {
+        MessagePlugin.error((e as Error).message);
+      } finally {
+        dlg.destroy();
+      }
+    },
+  });
+}
 </script>
 
 <template>
-  <div class="page">
-    <header class="topbar">
-      <t-button variant="text" @click="router.push(`/works/${workId}`)">← 作品</t-button>
-      <span class="title">设定库</span>
-      <t-button theme="primary" @click="activeTab === 'relations' ? (relDialog = true) : openCreate()">
-        {{ activeTab === "relations" ? "+ 建关系" : "+ 新建" }}
+  <WorkShell>
+    <template #actions>
+      <t-button theme="primary" @click="isRelations ? (relDialog = true) : openCreate()">
+        {{ isRelations ? "+ 建关系" : "+ 新建" }}
       </t-button>
-    </header>
+    </template>
 
-    <main class="body">
-      <t-tabs v-model="activeTab" @change="load">
-        <t-tab-panel v-for="(label, key) in ENTITY_TYPES" :key="key" :value="key" :label="label">
-          <t-list v-if="!loading" class="cards-list">
-            <t-list-item v-for="e in typeList" :key="e.id">
-              <t-space direction="vertical" class="cell">
-                <b>{{ e.name }}</b>
-                <span class="gray">{{ e.content || "（无描述）" }}</span>
-                <t-space v-if="e.extra" size="4">
-                  <t-tag v-for="(v, k) in e.extra" :key="k" variant="light" size="small">
-                    {{ CHARACTER_SLOTS.find((s) => s.key === k)?.label ?? k }}：{{ v }}
-                  </t-tag>
-                </t-space>
-              </t-space>
-              <t-space>
-                <t-button variant="text" size="small" @click="openEdit(e)">编辑</t-button>
-                <t-button variant="text" theme="danger" size="small" @click="removeEntity(e)">删</t-button>
-              </t-space>
-            </t-list-item>
-          </t-list>
-          <div v-else-if="typeList.length === 0" class="empty">此分类还没有条目</div>
-        </t-tab-panel>
+    <t-tabs v-model="activeTab" @change="load" class="ent-tabs">
+      <t-tab-panel v-for="(label, key) in ENTITY_TYPES" :key="key" :value="key" :label="label">
+        <section class="xz-panel">
+          <EmptyState
+            v-if="!loading && typeList.length === 0"
+            :title="`「${label}」还空着`"
+            hint="设定是写给 80 章之后的自己的——今天偷懒一笔，将来就要回头重读三万字"
+          >
+            <t-button theme="primary" @click="openCreate">新建第一条{{ label }}</t-button>
+          </EmptyState>
 
-        <t-tab-panel value="relations" label="关系网">
-          <t-list v-if="!loading">
-            <t-list-item v-for="r in store.relations" :key="r.id">
-              <span class="rel-line">
-                <t-tag theme="primary" variant="light">{{ r.fromName }}</t-tag>
-                <t-tag theme="warning" variant="outline" class="rel-type">{{ r.relType }}</t-tag>
-                <t-tag theme="primary" variant="light">{{ r.toName }}</t-tag>
-                <span class="gray note">{{ r.note }}</span>
+          <div v-else class="xz-rows">
+            <div v-for="e in typeList" :key="e.id" class="xz-row ent">
+              <div class="ent__main" tabindex="0" @click="openEdit(e)" @keydown.enter="openEdit(e)">
+                <span class="ent__name">{{ e.name }}</span>
+                <span v-if="e.content" class="ent__desc">{{ e.content }}</span>
+              </div>
+              <t-space v-if="e.extra && Object.keys(e.extra).length" size="4" class="ent__slots">
+                <t-tag v-for="(v, k) in e.extra" :key="k" variant="outline" size="small">
+                  {{ CHARACTER_SLOTS.find((s) => s.key === k)?.label ?? k }}：{{ v }}
+                </t-tag>
+              </t-space>
+              <t-button variant="text" size="small" @click="openEdit(e)">编辑</t-button>
+              <t-button variant="text" theme="danger" size="small" @click="confirmRemove(e)">删除</t-button>
+            </div>
+          </div>
+        </section>
+      </t-tab-panel>
+
+      <t-tab-panel value="relations" label="关系网">
+        <section class="xz-panel">
+          <EmptyState
+            v-if="!loading && store.relations.length === 0"
+            title="还没有关系"
+            hint="人物之间的线拉起来，冲突和羁绊才有地方长——右上角「建关系」"
+          >
+            <t-button theme="primary" @click="relDialog = true">拉起第一条关系</t-button>
+          </EmptyState>
+
+          <div v-else class="xz-rows">
+            <div v-for="r in store.relations" :key="r.id" class="xz-row rel">
+              <span class="rel__line">
+                <span class="rel__name">{{ r.fromName }}</span>
+                <span class="rel__type">{{ r.relType }}</span>
+                <span class="rel__name">{{ r.toName }}</span>
+                <span v-if="r.note" class="rel__note">{{ r.note }}</span>
               </span>
-              <t-button variant="text" theme="danger" size="small" @click="store.removeRelation(r.id).then(load)">删</t-button>
-            </t-list-item>
-          </t-list>
-          <div v-else class="empty">还没有关系，点右上角「建关系」</div>
-        </t-tab-panel>
-      </t-tabs>
-    </main>
+              <t-button variant="text" theme="danger" size="small" @click="confirmRemoveRelation(r)">解除</t-button>
+            </div>
+          </div>
+        </section>
+      </t-tab-panel>
+    </t-tabs>
 
     <!-- 新建/编辑条目 -->
     <t-dialog v-model:visible="dialogVisible" :header="editId ? '编辑条目' : `新建${ENTITY_TYPES[activeTab as EntityType] ?? '条目'}`" width="520" :footer="false">
@@ -201,51 +246,81 @@ async function saveRelation() {
         <t-button block theme="primary" @click="saveRelation">建立</t-button>
       </t-form>
     </t-dialog>
-  </div>
+  </WorkShell>
 </template>
 
 <style scoped>
-.page {
-  min-height: 100%;
+.ent-tabs :deep(.t-tabs__nav) {
+  margin-bottom: 16px;
 }
-.topbar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 12px 32px;
-  background: #fff;
-  border-bottom: 1px solid var(--td-component-stroke);
-}
-.title {
-  font-weight: 600;
-}
-.body {
-  max-width: 960px;
-  margin: 0 auto;
-  padding: 24px 32px;
-}
-.cell {
+
+/* 条目行 */
+.ent__main {
   flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  cursor: pointer;
+  outline: none;
 }
-.gray {
-  color: var(--td-text-color-placeholder);
-  font-size: 12px;
+.ent__name {
+  font-family: "STKaiti", "KaiTi", "Noto Serif SC", serif;
+  font-size: var(--xz-text-h3);
+  color: var(--xz-ink);
+  flex-shrink: 0;
 }
-.empty {
-  padding: 60px 0;
-  text-align: center;
-  color: var(--td-text-color-placeholder);
+.ent__main:hover .ent__name {
+  color: var(--xz-green);
 }
-.rel-line {
+.ent__desc {
+  min-width: 0;
+  color: var(--xz-ink-3);
+  font-size: var(--xz-text-xs);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ent__slots {
+  flex-shrink: 0;
+}
+
+/* 关系行：A —关系→ B，关系是灯橙的连接器 */
+.rel__line {
   flex: 1;
+  min-width: 0;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
+  overflow: hidden;
 }
-.rel-type {
-  margin: 0 4px;
+.rel__name {
+  font-family: "STKaiti", "KaiTi", "Noto Serif SC", serif;
+  font-size: var(--xz-text-h3);
+  color: var(--xz-ink);
 }
-.note {
-  margin-left: 8px;
+.rel__type {
+  padding: 1px 10px;
+  border: 1px solid var(--xz-lamp);
+  border-radius: 999px;
+  color: var(--xz-lamp);
+  font-size: var(--xz-text-xs);
+  letter-spacing: 0.05em;
+  flex-shrink: 0;
+}
+.rel__note {
+  color: var(--xz-ink-3);
+  font-size: var(--xz-text-xs);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 720px) {
+  .ent__desc,
+  .ent__slots,
+  .rel__note {
+    display: none;
+  }
 }
 </style>

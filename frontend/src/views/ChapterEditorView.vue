@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { MessagePlugin } from "tdesign-vue-next";
+import { DialogPlugin, MessagePlugin } from "tdesign-vue-next";
 import { marked } from "marked";
 import DOMPurify from "dompurify";
 
 import { CHAPTER_STATUS, useChaptersStore } from "../stores/chapters";
 import { useAnnotationsStore, type Annotation } from "../stores/annotations";
+import DeskHeader from "../components/DeskHeader.vue";
 
 const route = useRoute();
 const router = useRouter();
@@ -123,60 +124,83 @@ async function annSave() {
   }
 }
 
-async function annRemove(a: Annotation) {
-  if (!window.confirm("删掉这条批注？")) return;
-  try {
-    await annotations.remove(a.id);
-  } catch (e) {
-    MessagePlugin.error((e as Error).message);
-  }
+function annConfirmRemove(a: Annotation) {
+  const dlg = DialogPlugin.confirm({
+    header: "删掉这条批注",
+    body: a.content.length > 40 ? a.content.slice(0, 40) + "…" : a.content,
+    theme: "warning",
+    confirmBtn: { content: "删除", variant: "base" },
+    onConfirm: async () => {
+      try {
+        await annotations.remove(a.id);
+      } catch (e) {
+        MessagePlugin.error((e as Error).message);
+      } finally {
+        dlg.destroy();
+      }
+    },
+  });
 }
 </script>
 
 <template>
   <div class="page">
-    <header class="topbar">
-      <t-button variant="text" @click="router.push(`/works/${workId}/chapters`)">← 章节列表</t-button>
-      <t-select class="status-sel" :value="status" size="small" @change="setStatus">
-        <t-option v-for="(label, key) in CHAPTER_STATUS" :key="key" :value="key as keyof typeof CHAPTER_STATUS" :label="label" />
-      </t-select>
-      <t-button variant="outline" @click="annVisible = true">
-        批注{{ annotations.list.length ? `(${annotations.list.length})` : "" }}
-      </t-button>
-      <t-space>
-        <span class="meta" v-if="lastSavedAt">上次保存 {{ new Date(lastSavedAt).toLocaleTimeString() }} · {{ dirty ? "未保存" : "已保存" }}</span>
-        <span class="meta strong">{{ words.toLocaleString() }} 字</span>
+    <DeskHeader :back-to="`/works/${workId}/chapters`" back-label="章节">
+      <template #center>
+        <t-select class="status-sel" :value="status" size="small" @change="setStatus">
+          <t-option v-for="(label, key) in CHAPTER_STATUS" :key="key" :value="key as keyof typeof CHAPTER_STATUS" :label="label" />
+        </t-select>
+        <t-button variant="outline" size="small" @click="annVisible = true">
+          批注{{ annotations.list.length ? ` ${annotations.list.length}` : "" }}
+        </t-button>
+      </template>
+      <template #actions>
+        <span class="meta" v-if="lastSavedAt">
+          {{ dirty ? "未保存…" : `已存 ${new Date(lastSavedAt).toLocaleTimeString()}` }}
+        </span>
+        <span class="meta meta--strong">{{ words.toLocaleString() }} 字</span>
         <t-button theme="primary" :loading="saving" @click="save()">保存</t-button>
-      </t-space>
-    </header>
+      </template>
+    </DeskHeader>
 
     <main class="editor" v-if="loaded">
-      <input v-model="title" class="title-input" placeholder="章节标题" maxlength="128" />
-      <t-textarea v-model="synopsis" class="synopsis" :autosize="{ minRows: 1, maxRows: 3 }" placeholder="本章简要剧情（一句话）" />
+      <!-- 卷首：题名与章意 -->
+      <div class="editor__head">
+        <input v-model="title" class="title-input" placeholder="章节标题" maxlength="128" />
+        <input v-model="synopsis" class="synopsis-input" placeholder="一句话剧情（本章摘要，可选）" maxlength="500" />
+      </div>
 
       <div class="split">
-        <!-- 左：写作区（markdown 原文） -->
-        <div class="pane">
-          <textarea v-model="content" class="write-area" placeholder="开始写作…（支持 Markdown）" spellcheck="false" />
+        <!-- 左：稿纸写作区（字坐在行线上） -->
+        <div class="manuscript manuscript--write">
+          <textarea
+            v-model="content"
+            class="write-area"
+            placeholder="开始写作…（支持 Markdown，停笔 2 秒自动落盘）"
+            spellcheck="false"
+          />
         </div>
         <!-- 右：实时预览（marked + DOMPurify 防 XSS） -->
-        <div class="pane preview" v-html="previewHtml" :class="{ empty: !content }" />
+        <div class="manuscript manuscript--preview">
+          <div class="xz-md" v-if="content" v-html="previewHtml" />
+          <p v-else class="preview-empty">预览会出现在这里</p>
+        </div>
       </div>
     </main>
 
-    <!-- 批注抽屉：只影响写作流，不弹阻塞对话框 -->
+    <!-- 批注抽屉：不打断写作流 -->
     <t-drawer v-model:visible="annVisible" header="本章批注" size="360px" :footer="false">
       <div class="ann-list">
         <div v-if="annotations.list.length === 0" class="ann-empty">
           还没有批注——"这里要呼应 XX 章""这句要改"随手记下，比贴书签靠谱
         </div>
-        <div v-for="a in annotations.list" :key="a.id" class="ann-item">
+        <div v-for="a in annotations.list" :key="a.id" class="ann-item xz-panel">
           <div class="ann-content">{{ a.content }}</div>
           <div class="ann-foot">
             <span>{{ new Date(a.updatedAt).toLocaleString() }}</span>
             <t-space size="4">
-              <t-button variant="text" size="small" @click="annStartEdit(a)">改</t-button>
-              <t-button variant="text" theme="danger" size="small" @click="annRemove(a)">删</t-button>
+              <t-button variant="text" size="small" @click="annStartEdit(a)">修改</t-button>
+              <t-button variant="text" theme="danger" size="small" @click="annConfirmRemove(a)">删除</t-button>
             </t-space>
           </div>
         </div>
@@ -197,72 +221,144 @@ async function annRemove(a: Annotation) {
   height: 100vh;
   display: flex;
   flex-direction: column;
-  background: #fff;
-}
-.topbar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 12px;
-  padding: 10px 32px;
-  border-bottom: 1px solid var(--td-component-stroke);
+  background: var(--xz-wall);
 }
 .status-sel {
-  width: 120px;
+  width: 104px;
 }
 .meta {
-  color: var(--td-text-color-placeholder);
-  font-size: 13px;
+  color: var(--xz-ink-3);
+  font-size: var(--xz-text-xs);
 }
-.meta.strong {
-  color: var(--td-text-color-primary);
+.meta--strong {
+  color: var(--xz-ink);
   font-weight: 600;
+  font-variant-numeric: tabular-nums;
 }
+
 .editor {
   flex: 1;
   display: flex;
   flex-direction: column;
   min-height: 0;
-  padding: 16px 32px 0;
+  padding: 20px 32px 24px;
+}
+
+/* 卷首 */
+.editor__head {
+  max-width: 680px;
+  width: 100%;
+  margin: 0 auto 16px;
 }
 .title-input {
+  width: 100%;
   border: none;
   outline: none;
-  font-size: 24px;
-  font-weight: 700;
-  margin-bottom: 8px;
   background: transparent;
+  font-family: "STKaiti", "KaiTi", "Noto Serif SC", serif;
+  font-size: 26px;
+  font-weight: 700;
+  line-height: 1.3;
+  letter-spacing: 0.04em;
+  color: var(--xz-ink);
+  margin-bottom: 6px;
 }
-.synopsis {
-  margin-bottom: 12px;
+.title-input::placeholder {
+  color: var(--xz-ink-3);
 }
+.synopsis-input {
+  width: 100%;
+  border: none;
+  outline: none;
+  background: transparent;
+  font-size: var(--xz-text-sm);
+  color: var(--xz-ink-2);
+  border-bottom: 1px dashed var(--xz-line-2);
+  padding-bottom: 6px;
+}
+.synopsis-input::placeholder {
+  color: var(--xz-ink-3);
+}
+
 .split {
   flex: 1;
   display: flex;
   min-height: 0;
-  gap: 16px;
-  padding-bottom: 16px;
+  gap: 20px;
 }
-.pane {
+
+/* ---------- 稿纸：字坐在行线上（行高=线距） ---------- */
+.manuscript {
   flex: 1;
-  border: 1px solid var(--td-component-stroke);
-  border-radius: 8px;
+  min-width: 0;
   overflow: auto;
-  padding: 16px 20px;
+  background-color: var(--xz-paper);
+  background-image: repeating-linear-gradient(180deg, transparent 0 35px, var(--xz-paper-line) 35px 36px);
+  border-radius: 2px 8px 8px 2px; /* 书卷形：订口侧小圆 */
+  box-shadow: var(--td-shadow-2);
+  padding: 18px 0 40px;
+}
+/* 顶部受光 */
+.manuscript::after {
+  content: "";
+  position: sticky;
+  top: 0;
+  display: block;
+  height: 0;
 }
 .write-area {
+  display: block;
   width: 100%;
+  max-width: 680px;
   height: 100%;
+  margin: 0 auto;
   border: none;
   outline: none;
   resize: none;
-  font-size: 15px;
-  line-height: 1.9;
+  background: transparent;
+  font-family: "STKaiti", "KaiTi", "Noto Serif SC", serif;
+  font-size: 17px;
+  line-height: 36px; /* 与稿纸行距同源：字坐线上 */
+  color: var(--xz-paper-ink);
+  padding: 0 28px;
 }
-.preview.empty::before {
-  content: "输入正文后这里实时预览";
-  color: var(--td-text-color-placeholder);
+.write-area::placeholder {
+  color: var(--xz-paper-ink-3);
 }
+
+/* 预览：同纸同墨 */
+.manuscript--preview {
+  padding: 0;
+}
+.manuscript--preview .xz-md {
+  max-width: 680px;
+  margin: 0 auto;
+  padding: 18px 28px 40px;
+  line-height: 36px;
+  color: var(--xz-paper-ink);
+}
+.preview-empty {
+  max-width: 680px;
+  margin: 18px auto 0;
+  padding: 0 28px;
+  color: var(--xz-paper-ink-3);
+  font-size: var(--xz-text-sm);
+}
+
+/* 预览内的墨色细化（纸上的强调/引用） */
+.manuscript--preview :deep(a) {
+  color: #5d7049;
+}
+.manuscript--preview :deep(blockquote) {
+  border-left-color: var(--xz-red);
+  color: var(--xz-paper-ink-2);
+}
+.manuscript--preview :deep(code) {
+  background: rgba(63, 58, 48, 0.07);
+  color: var(--xz-paper-ink);
+}
+
+/* ---------- 批注抽屉 ---------- */
 .ann-list {
   display: flex;
   flex-direction: column;
@@ -271,25 +367,24 @@ async function annRemove(a: Annotation) {
   overflow: auto;
 }
 .ann-item {
-  border: 1px solid var(--td-component-stroke);
-  border-radius: 6px;
-  padding: 8px 10px;
+  padding: 10px 12px;
 }
 .ann-content {
-  font-size: 14px;
-  line-height: 1.6;
+  font-size: var(--xz-text-body);
+  line-height: 1.65;
   word-break: break-word;
+  white-space: pre-wrap;
 }
 .ann-foot {
-  margin-top: 6px;
+  margin-top: 8px;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  font-size: 12px;
-  color: var(--td-text-color-placeholder);
+  font-size: var(--xz-text-xs);
+  color: var(--xz-ink-3);
 }
 .ann-input {
-  border-top: 1px solid var(--td-component-stroke);
+  border-top: 1px solid var(--xz-line);
   padding-top: 12px;
 }
 .ann-actions {
@@ -300,8 +395,18 @@ async function annRemove(a: Annotation) {
 .ann-empty {
   padding: 32px 0;
   text-align: center;
-  color: var(--td-text-color-placeholder);
-  font-size: 13px;
+  color: var(--xz-ink-3);
+  font-size: var(--xz-text-sm);
   line-height: 1.7;
+}
+
+/* 窄屏：收掉预览（写作优先），缩边距 */
+@media (max-width: 920px) {
+  .manuscript--preview {
+    display: none;
+  }
+  .editor {
+    padding: 16px 16px 20px;
+  }
 }
 </style>

@@ -1,13 +1,14 @@
 <script setup lang="ts">
 import { onMounted, ref } from "vue";
-import { useRoute, useRouter } from "vue-router";
-import { MessagePlugin } from "tdesign-vue-next";
+import { useRoute } from "vue-router";
+import { DialogPlugin, MessagePlugin } from "tdesign-vue-next";
 
 import { FORESHADOW_STATUS, usePlanningStore, type Foreshadow } from "../stores/planning";
 import { useChaptersStore } from "../stores/chapters";
+import WorkShell from "../components/WorkShell.vue";
+import EmptyState from "../components/EmptyState.vue";
 
 const route = useRoute();
-const router = useRouter();
 const store = usePlanningStore();
 const chapters = useChaptersStore();
 const workId = Number(route.params.id);
@@ -24,7 +25,8 @@ onMounted(async () => {
   }
 });
 
-const statusTheme: Record<string, string> = { open: "warning", closed: "success", dropped: "default" };
+/** 状态 → 印章配色（open 未收=灯橙提醒 / closed 已收=豆绿 / dropped 遗忘=灰） */
+const stampClass: Record<string, string> = { open: "xz-stamp--open", closed: "xz-stamp--closed", dropped: "xz-stamp--dropped" };
 
 function openCreate() {
   editId.value = null;
@@ -77,53 +79,63 @@ async function setStatus(f: Foreshadow, status: string) {
   }
 }
 
-async function removeForeshadow(f: Foreshadow) {
-  if (!window.confirm("删除这条伏笔？")) return;
-  try {
-    await store.removeForeshadow(f.id);
-    store.fetchForeshadows(workId);
-  } catch (e) {
-    MessagePlugin.error((e as Error).message);
-  }
+function confirmRemove(f: Foreshadow) {
+  const dlg = DialogPlugin.confirm({
+    header: "删除这条伏笔",
+    body: f.content.length > 48 ? f.content.slice(0, 48) + "…" : f.content,
+    theme: "warning",
+    confirmBtn: { content: "确认删除", variant: "base" },
+    onConfirm: async () => {
+      try {
+        await store.removeForeshadow(f.id);
+        MessagePlugin.success("已删除");
+        store.fetchForeshadows(workId);
+      } catch (e) {
+        MessagePlugin.error((e as Error).message);
+      } finally {
+        dlg.destroy();
+      }
+    },
+  });
 }
 
 const chapterOptions = () => chapters.list.map((c) => ({ value: c.id, label: `${c.sortNo}. ${c.title}` }));
 </script>
 
 <template>
-  <div class="page">
-    <header class="topbar">
-      <t-button variant="text" @click="router.push(`/works/${workId}`)">← 作品</t-button>
-      <span class="title">伏笔台账</span>
+  <WorkShell>
+    <template #actions>
       <t-button theme="primary" @click="openCreate">+ 新伏笔</t-button>
-    </header>
+    </template>
 
-    <main class="body">
-      <div v-if="store.foreshadows.length === 0" class="empty">还没有伏笔——埋下去的东西不记账，80 章后必然忘</div>
-      <t-card v-for="f in store.foreshadows" :key="f.id" class="fs-card" :bordered="false">
-        <div class="row">
-          <t-tag :theme="statusTheme[f.status]" variant="light">{{ FORESHADOW_STATUS[f.status] }}</t-tag>
-          <span class="content">{{ f.content }}</span>
-          <t-space>
-            <t-select
-              class="status-sel"
-              :value="f.status"
-              size="small"
-              @change="(v: string) => setStatus(f, v)"
-            >
-              <t-option v-for="(label, key) in FORESHADOW_STATUS" :key="key" :value="key" :label="label" />
-            </t-select>
-            <t-button variant="text" size="small" @click="openEdit(f)">编</t-button>
-            <t-button variant="text" theme="danger" size="small" @click="removeForeshadow(f)">删</t-button>
-          </t-space>
+    <section class="xz-panel">
+      <EmptyState
+        v-if="store.foreshadows.length === 0"
+        title="台账还是空的"
+        hint="埋下去的东西不记账，80 章后必然忘——现在记一条，将来少重读三万字"
+      >
+        <t-button theme="primary" @click="openCreate">记第一条伏笔</t-button>
+      </EmptyState>
+
+      <div v-else class="xz-rows">
+        <div v-for="f in store.foreshadows" :key="f.id" class="xz-row fs">
+          <span class="xz-stamp fs__stamp" :class="stampClass[f.status]">{{ FORESHADOW_STATUS[f.status] }}</span>
+          <span class="fs__main">
+            <span class="fs__content">{{ f.content }}</span>
+            <span class="fs__track">
+              埋 · <b>{{ chapterTitle(f.plantedChapterId) }}</b>
+              <span class="fs__arrow">→</span>
+              收 · <b>{{ chapterTitle(f.revealChapterId) }}</b>
+            </span>
+          </span>
+          <t-select class="fs__status" :value="f.status" size="small" @change="(v: string) => setStatus(f, v)">
+            <t-option v-for="(label, key) in FORESHADOW_STATUS" :key="key" :value="key" :label="label" />
+          </t-select>
+          <t-button variant="text" size="small" @click="openEdit(f)">编辑</t-button>
+          <t-button variant="text" theme="danger" size="small" @click="confirmRemove(f)">删除</t-button>
         </div>
-        <div class="meta">
-          埋设：<b>{{ chapterTitle(f.plantedChapterId) }}</b>
-          <t-tag variant="outline" size="small" theme="warning" style="margin: 0 8px">→</t-tag>
-          回收：<b>{{ chapterTitle(f.revealChapterId) }}</b>
-        </div>
-      </t-card>
-    </main>
+      </div>
+    </section>
 
     <t-dialog v-model:visible="dialogVisible" :header="editId ? '编辑伏笔' : '新伏笔'" width="520" :footer="false">
       <t-form label-align="top">
@@ -139,54 +151,46 @@ const chapterOptions = () => chapters.list.map((c) => ({ value: c.id, label: `${
         <t-button block theme="primary" @click="save">保存</t-button>
       </t-form>
     </t-dialog>
-  </div>
+  </WorkShell>
 </template>
 
 <style scoped>
-.page {
-  min-height: 100%;
+/* 行首状态印章（颜色由 stampClass 指定）：不被长文挤变形 */
+.fs__stamp {
+  flex-shrink: 0;
 }
-.topbar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 12px 32px;
-  background: #fff;
-  border-bottom: 1px solid var(--td-component-stroke);
-}
-.title {
-  font-weight: 600;
-}
-.body {
-  max-width: 960px;
-  margin: 0 auto;
-  padding: 24px 32px;
+.fs__main {
+  flex: 1;
+  min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 4px;
 }
-.fs-card {
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+.fs__content {
+  font-size: var(--xz-text-body);
+  color: var(--xz-ink);
+  line-height: 1.55;
 }
-.row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
+.fs__track {
+  font-size: var(--xz-text-xs);
+  color: var(--xz-ink-3);
 }
-.content {
-  flex: 1;
+.fs__track b {
+  color: var(--xz-ink-2);
+  font-weight: 500;
 }
-.status-sel {
+.fs__arrow {
+  margin: 0 8px;
+  color: var(--xz-lamp);
+}
+.fs__status {
   width: 96px;
+  flex-shrink: 0;
 }
-.meta {
-  margin-top: 10px;
-  color: var(--td-text-color-secondary);
-  font-size: 13px;
-}
-.empty {
-  padding: 60px 0;
-  text-align: center;
-  color: var(--td-text-color-placeholder);
+
+@media (max-width: 640px) {
+  .fs__track {
+    display: none;
+  }
 }
 </style>

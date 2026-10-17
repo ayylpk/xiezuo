@@ -1,18 +1,19 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { MessagePlugin, Popup } from "tdesign-vue-next";
+import { DialogPlugin, MessagePlugin } from "tdesign-vue-next";
 
 import { api } from "../api/client";
 import { WORK_STATUS_TEXT } from "../constants";
 import { useWorksStore } from "../stores/works";
+import WorkShell from "../components/WorkShell.vue";
+import EmptyState from "../components/EmptyState.vue";
 
 const route = useRoute();
 const router = useRouter();
 const worksStore = useWorksStore();
 const workId = Number(route.params.id);
 
-const work = ref<(typeof worksStore.works)[number] | null>(null);
 const detail = ref<{
   id: number;
   title: string;
@@ -31,7 +32,6 @@ async function load() {
   try {
     const { work: d } = await api.get<{ work: typeof detail.value }>(`/works/${workId}`);
     detail.value = d;
-    work.value = worksStore.works.find((w) => w.id === workId) ?? null;
   } catch (e) {
     MessagePlugin.error((e as Error).message);
   }
@@ -39,9 +39,7 @@ async function load() {
 
 onMounted(load);
 
-const statusText = computed(
-  () => (detail.value ? WORK_STATUS_TEXT[detail.value.status] : ""),
-);
+const statusText = computed(() => (detail.value ? WORK_STATUS_TEXT[detail.value.status] : ""));
 
 function startEdit() {
   editing.value = true;
@@ -60,14 +58,25 @@ async function saveEdit() {
   }
 }
 
-async function removeWork() {
-  try {
-    await worksStore.remove(workId);
-    MessagePlugin.success("已删除");
-    router.push("/");
-  } catch (e) {
-    MessagePlugin.error((e as Error).message);
-  }
+/** 删除整作：DialogPlugin 确认（替代原生 confirm，风格统一） */
+function confirmRemove() {
+  const dlg = DialogPlugin.confirm({
+    header: "删除整个作品",
+    body: `《${detail.value?.title}》的 ${detail.value?.chapterCount} 章正文将一并删除，不可恢复。`,
+    theme: "warning",
+    confirmBtn: { content: "确认删除", variant: "base" },
+    onConfirm: async () => {
+      try {
+        await worksStore.remove(workId);
+        MessagePlugin.success("已删除");
+        router.push("/");
+      } catch (e) {
+        MessagePlugin.error((e as Error).message);
+      } finally {
+        dlg.destroy();
+      }
+    },
+  });
 }
 
 /** 导出：后端返回文件流（非 JSON），直接 fetch + Blob 触发下载，不走 api client */
@@ -94,133 +103,163 @@ async function download(format: string) {
     MessagePlugin.error((e as Error).message);
   }
 }
+
+const CH_STATUS_LABEL: Record<string, { text: string; cls: string }> = {
+  draft: { text: "草稿", cls: "xz-stamp--shelved" },
+  written: { text: "已写", cls: "xz-stamp--ongoing" },
+  review: { text: "待审", cls: "xz-stamp--open" },
+  final: { text: "定稿", cls: "xz-stamp--closed" },
+};
 </script>
 
 <template>
-  <div class="page">
-    <header class="topbar">
-      <t-button variant="text" @click="router.push('/')">← 书架</t-button>
-      <t-tag v-if="detail" theme="primary" variant="light">{{ statusText }}</t-tag>
-      <t-space>
-        <t-button theme="primary" @click="router.push(`/works/${workId}/chapters`)">写章节</t-button>
-        <t-dropdown @click="(opt: { value: string }) => download(opt.value)">
-          <t-button variant="outline">导出</t-button>
-          <template #dropdown>
-            <t-dropdown-menu>
-              <t-dropdown-item value="md">Markdown</t-dropdown-item>
-              <t-dropdown-item value="txt">纯文本</t-dropdown-item>
-              <t-dropdown-item value="json">JSON（全量数据）</t-dropdown-item>
-            </t-dropdown-menu>
-          </template>
-        </t-dropdown>
-        <Popup content="删除整个作品（章节一并删除）">
-          <t-button theme="danger" variant="outline" @click="removeWork">删除</t-button>
-        </Popup>
-      </t-space>
-    </header>
+  <WorkShell>
+    <template #actions>
+      <t-button variant="outline" @click="router.push('/search')">搜索</t-button>
+      <t-dropdown @click="(opt: { value: string }) => download(opt.value)">
+        <t-button variant="outline">导出</t-button>
+        <template #dropdown>
+          <t-dropdown-menu>
+            <t-dropdown-item value="md">Markdown</t-dropdown-item>
+            <t-dropdown-item value="txt">纯文本</t-dropdown-item>
+            <t-dropdown-item value="json">JSON（全量数据）</t-dropdown-item>
+          </t-dropdown-menu>
+        </template>
+      </t-dropdown>
+      <t-button theme="danger" variant="outline" @click="confirmRemove">删除作品</t-button>
+      <t-button theme="primary" @click="router.push(`/works/${workId}/chapters`)">写章节</t-button>
+    </template>
 
-    <nav class="subnav" v-if="detail">
-      <router-link :to="`/works/${workId}`" exact-active-class="active">概览</router-link>
-      <router-link :to="`/works/${workId}/chapters`" active-class="active">章节</router-link>
-      <router-link :to="`/works/${workId}/entities`" active-class="active">设定库</router-link>
-      <router-link :to="`/works/${workId}/outlines`" active-class="active">大纲</router-link>
-      <router-link :to="`/works/${workId}/foreshadows`" active-class="active">伏笔</router-link>
-      <router-link :to="`/works/${workId}/timeline`" active-class="active">时间线</router-link>
-      <router-link :to="`/works/${workId}/notes`" active-class="active">随笔</router-link>
-    </nav>
+    <div v-if="detail" class="grid">
+      <!-- 左：作品档案 -->
+      <section class="xz-panel profile">
+        <h1 class="profile__title">{{ detail.title }}</h1>
+        <div class="profile__stats">
+          <span class="profile__stat"><b>{{ detail.chapterCount }}</b> 章</span>
+          <span class="profile__stat"><b>{{ detail.totalWords.toLocaleString() }}</b> 字</span>
+          <span class="xz-stamp">{{ statusText }}</span>
+        </div>
+        <p class="profile__desc">{{ detail.description || "还没写简介。简介是给未来的自己留的书签。" }}</p>
+        <t-button variant="outline" block @click="startEdit">编辑信息</t-button>
+      </section>
 
-    <main v-if="detail" class="body">
-      <h1 class="title">{{ detail.title }}</h1>
-      <t-space size="small" class="stats">
-        <t-tag variant="outline">{{ detail.chapterCount }} 章</t-tag>
-        <t-tag variant="outline" theme="primary">{{ detail.totalWords.toLocaleString() }} 字</t-tag>
-      </t-space>
-      <p class="desc">{{ detail.description || "（暂无简介，点右上角「编辑」补充）" }}</p>
-      <t-button variant="text" @click="startEdit">编辑信息</t-button>
-
-      <h3 class="section">章节概览</h3>
-      <div v-if="detail.chapters.length === 0" class="empty">还没有章节，点右上角「写章节」开始</div>
-      <t-list v-else>
-        <t-list-item v-for="ch in detail.chapters" :key="ch.id" @click="router.push(`/works/${workId}/chapters/${ch.id}`)">
-          <span class="ch-index">{{ ch.sortNo }}</span>
-          <span class="ch-title">{{ ch.title }}</span>
-          <t-tag variant="light" theme="warning" v-if="ch.status === 'review'">待审查</t-tag>
-          <t-tag variant="light" theme="success" v-else-if="ch.status === 'final'">已定稿</t-tag>
-          <span class="ch-words">{{ ch.wordCount }} 字</span>
-        </t-list-item>
-      </t-list>
-    </main>
+      <!-- 右：章节一览 -->
+      <section class="xz-panel chapters">
+        <h2 class="chapters__head">章节一览</h2>
+        <EmptyState
+          v-if="detail.chapters.length === 0"
+          title="还没有章节"
+          hint="第一章从右上角「写章节」开始"
+        >
+          <t-button theme="primary" @click="router.push(`/works/${workId}/chapters`)">去开笔</t-button>
+        </EmptyState>
+        <div v-else class="xz-rows">
+          <div
+            v-for="ch in detail.chapters"
+            :key="ch.id"
+            class="xz-row chapters__row"
+            tabindex="0"
+            @click="router.push(`/works/${workId}/chapters/${ch.id}`)"
+            @keydown.enter="router.push(`/works/${workId}/chapters/${ch.id}`)"
+          >
+            <span class="xz-no">{{ ch.sortNo }}</span>
+            <span class="chapters__title">{{ ch.title }}</span>
+            <span v-if="CH_STATUS_LABEL[ch.status]" class="xz-stamp" :class="CH_STATUS_LABEL[ch.status].cls">
+              {{ CH_STATUS_LABEL[ch.status].text }}
+            </span>
+            <span class="chapters__words">{{ ch.wordCount.toLocaleString() }} 字</span>
+          </div>
+        </div>
+      </section>
+    </div>
 
     <t-dialog v-model:visible="editing" header="编辑作品信息" width="480" :footer="false">
       <t-input v-model="editTitle" label="书名" maxlength="128" style="margin-bottom: 16px" />
       <t-textarea v-model="editDesc" label="简介" :autosize="{ minRows: 3 }" maxlength="2000" />
       <t-button block theme="primary" style="margin-top: 16px" @click="saveEdit">保存</t-button>
     </t-dialog>
-  </div>
+  </WorkShell>
 </template>
 
 <style scoped>
-.page {
-  min-height: 100%;
+.grid {
+  display: grid;
+  grid-template-columns: 340px 1fr;
+  gap: 22px;
+  align-items: start;
 }
-.topbar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 12px 32px;
-  background: #fff;
-  border-bottom: 1px solid var(--td-component-stroke);
+
+/* 作品档案卡 */
+.profile {
+  padding: 22px 22px 20px;
 }
-.subnav {
-  display: flex;
-  gap: 4px;
-  padding: 0 32px;
-  background: #fff;
-  border-bottom: 1px solid var(--td-component-stroke);
-}
-.subnav a {
-  padding: 10px 14px;
-  color: var(--td-text-color-secondary);
-  text-decoration: none;
-  border-bottom: 2px solid transparent;
-}
-.subnav a.active {
-  color: var(--td-brand-color);
-  border-bottom-color: var(--td-brand-color);
-  font-weight: 600;
-}
-.body {
-  max-width: 960px;
-  margin: 0 auto;
-  padding: 32px;
-}
-.title {
+.profile__title {
   margin: 0 0 12px;
+  font-family: "STKaiti", "KaiTi", "Noto Serif SC", serif;
+  font-size: 22px;
+  line-height: 1.4;
+  color: var(--xz-ink);
 }
-.stats {
-  margin-bottom: 8px;
+.profile__stats {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 12px;
 }
-.desc {
-  color: var(--td-text-color-secondary);
-  margin: 8px 0;
+.profile__stat {
+  color: var(--xz-ink-2);
+  font-size: var(--xz-text-xs);
 }
-.section {
-  margin-top: 40px;
+.profile__stat b {
+  color: var(--xz-ink);
+  font-size: var(--xz-text-h3);
+  font-variant-numeric: tabular-nums;
+  margin-right: 2px;
 }
-.empty {
-  padding: 48px 0;
-  color: var(--td-text-color-placeholder);
+.profile__desc {
+  color: var(--xz-ink-2);
+  font-size: var(--xz-text-sm);
+  line-height: 1.75;
+  margin: 0 0 18px;
+  white-space: pre-wrap;
 }
-.ch-index {
-  display: inline-block;
-  min-width: 32px;
-  color: var(--td-text-color-placeholder);
+
+/* 章节一览 */
+.chapters {
+  overflow: hidden; /* 行 hover 背景不溢出圆角 */
 }
-.ch-title {
+.chapters__head {
+  margin: 0;
+  padding: 16px 20px 12px;
+  font-size: var(--xz-text-h3);
+  font-weight: 600;
+  border-bottom: 1px solid var(--xz-line);
+}
+.chapters__row {
+  cursor: pointer;
+  outline: none;
+}
+.chapters__row:focus-visible {
+  background: var(--xz-panel-2);
+}
+.chapters__title {
   flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
-.ch-words {
-  color: var(--td-text-color-placeholder);
-  margin-left: 16px;
+.chapters__words {
+  flex-shrink: 0;
+  color: var(--xz-ink-3);
+  font-size: var(--xz-text-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 窄屏：单列 */
+@media (max-width: 820px) {
+  .grid {
+    grid-template-columns: 1fr;
+  }
 }
 </style>

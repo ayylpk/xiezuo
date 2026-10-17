@@ -4,6 +4,9 @@ import { useRoute, useRouter } from "vue-router";
 import { MessagePlugin } from "tdesign-vue-next";
 
 import { api } from "../api/client";
+import { useWorksStore } from "../stores/works";
+import DeskHeader from "../components/DeskHeader.vue";
+import EmptyState from "../components/EmptyState.vue";
 
 interface SearchHit {
   kind: string;
@@ -13,18 +16,19 @@ interface SearchHit {
   snippet: string;
 }
 
-/** 类型 → 标签/主题色（后端 title 自带【类型】前缀，渲染时拆出来单放 tag） */
-const KIND_META: Record<string, { label: string; theme: string }> = {
-  chapter: { label: "章节", theme: "primary" },
-  entity: { label: "设定", theme: "success" },
-  outline: { label: "大纲", theme: "warning" },
-  foreshadow: { label: "伏笔", theme: "danger" },
-  timeline: { label: "时间线", theme: "neutral" },
-  note: { label: "随笔", theme: "info" },
+/** 类型 → 印章文案（后端 title 自带【类型】前缀，渲染时拆出来单放印章） */
+const KIND_LABEL: Record<string, string> = {
+  chapter: "章节",
+  entity: "设定",
+  outline: "大纲",
+  foreshadow: "伏笔",
+  timeline: "时间线",
+  note: "随笔",
 };
 
 const route = useRoute();
 const router = useRouter();
+const worksStore = useWorksStore();
 
 const keyword = ref(typeof route.query.q === "string" ? route.query.q : "");
 const hits = ref<SearchHit[]>([]);
@@ -50,15 +54,18 @@ async function runSearch() {
 }
 
 onMounted(() => {
+  if (!worksStore.loaded) worksStore.fetchAll().catch(() => {}); // 结果行要显示书名而非 #id
   if (keyword.value) runSearch();
 });
 
-/** 拆分【类型】标题前缀，tag 单独展示 */
+/** 拆分【类型】标题前缀，印章单独展示（伏笔/时间线无标题字段，正文命中如实标注） */
 function display(h: SearchHit) {
   const m = h.title.match(/^【(.+?)】(.*)$/);
-  const meta = KIND_META[h.kind] ?? { label: m?.[1] ?? h.kind, theme: "default" };
-  return { ...h, tag: meta.label, theme: meta.theme, title: m?.[2] || h.title };
+  const rest = (m?.[2] ?? h.title).trim();
+  return { ...h, tag: KIND_LABEL[h.kind] ?? m?.[1] ?? h.kind, title: rest || "（命中的是正文）" };
 }
+
+const workTitle = (id: number) => worksStore.works.find((w) => w.id === id)?.title ?? `作品 #${id}`;
 
 /** 点击结果 → 跳对应页（章节直达编辑器，其余跳列表页） */
 function goTo(h: SearchHit) {
@@ -74,38 +81,66 @@ function goTo(h: SearchHit) {
 
 <template>
   <div class="page">
-    <header class="topbar">
-      <t-button variant="text" @click="router.push('/')">← 书架</t-button>
-      <span class="title">全局搜索</span>
-      <span class="spacer" />
-      <t-input
-        v-model="keyword"
-        class="kw"
-        placeholder="搜章节 / 设定 / 大纲 / 伏笔 / 时间线 / 随笔…"
-        clearable
-        @enter="runSearch"
-      >
-        <template #suffixIcon>
-          <t-button theme="primary" variant="text" :loading="searching" @click="runSearch">搜索</t-button>
-        </template>
-      </t-input>
-    </header>
+    <DeskHeader back-to="/" back-label="书架">
+      <template #center><span class="page__name">全局搜索</span></template>
+    </DeskHeader>
 
     <main class="body">
-      <div v-if="!searched" class="empty">输入关键词回车，跨全书检索（章节正文、简情、设定、大纲、伏笔、时间线、随笔）</div>
-      <div v-else-if="hits.length === 0" class="empty">没有命中「{{ keyword }}」</div>
-      <t-list v-else>
-        <t-list-item v-for="h in hits" :key="`${h.kind}-${h.id}`" class="hit" @click="goTo(h)">
-          <t-tag :theme="display(h).theme" variant="light">{{ display(h).tag }}</t-tag>
-          <div class="main">
-            <div class="line1">
-              <b>{{ display(h).title }}</b>
-              <span class="work">作品 #{{ h.workId }}</span>
+      <!-- 主场景：一口大搜索井 -->
+      <div class="well">
+        <h1 v-if="!searched" class="well__hello xz-display">跨全书检索</h1>
+        <t-input
+          v-model="keyword"
+          class="well__input"
+          size="large"
+          placeholder="章节 / 设定 / 大纲 / 伏笔 / 时间线 / 随笔…"
+          clearable
+          @enter="runSearch"
+        >
+          <template #suffixIcon>
+            <t-button theme="primary" variant="text" :loading="searching" @click="runSearch">搜索</t-button>
+          </template>
+        </t-input>
+        <p v-if="!searched" class="well__hint">正文、简情、设定、大纲全在一个入口里，回车即搜</p>
+        <p v-else class="well__count">命中 <b>{{ hits.length }}</b> 条</p>
+      </div>
+
+      <!-- 未搜：指路空态 -->
+      <EmptyState
+        v-if="!searched"
+        title="想找哪一句？"
+        hint="比如某个角色的口头禅、某条还没收的伏笔、上次写到哪卡住了——搜比翻快"
+      />
+
+      <!-- 搜了没中 -->
+      <EmptyState
+        v-else-if="hits.length === 0"
+        :title="`没有命中「${keyword}」`"
+        hint="换个更短的词试试——搜索按字面匹配，两个字的关键词比一整句话更容易中"
+      />
+
+      <!-- 结果 -->
+      <section v-else class="xz-panel results">
+        <div class="xz-rows">
+          <div
+            v-for="h in hits"
+            :key="`${h.kind}-${h.id}`"
+            class="xz-row hit"
+            tabindex="0"
+            @click="goTo(h)"
+            @keydown.enter="goTo(h)"
+          >
+            <span class="xz-stamp hit__kind">{{ display(h).tag }}</span>
+            <div class="hit__main">
+              <div class="hit__line1">
+                <span class="hit__title">{{ display(h).title }}</span>
+                <span class="hit__work">{{ workTitle(h.workId) }}</span>
+              </div>
+              <p class="hit__snippet">{{ h.snippet || "（命中标题）" }}</p>
             </div>
-            <div class="snippet">{{ h.snippet || "（命中标题）" }}</div>
           </div>
-        </t-list-item>
-      </t-list>
+        </div>
+      </section>
     </main>
   </div>
 </template>
@@ -113,62 +148,117 @@ function goTo(h: SearchHit) {
 <style scoped>
 .page {
   min-height: 100%;
+  background: var(--xz-wall);
 }
-.topbar {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 12px 32px;
-  background: #fff;
-  border-bottom: 1px solid var(--td-component-stroke);
-}
-.title {
+.page__name {
+  font-size: 17px;
   font-weight: 600;
-}
-.spacer {
-  flex: 1;
-}
-.kw {
-  width: 440px;
+  color: var(--xz-ink);
 }
 .body {
-  max-width: 960px;
+  max-width: 860px;
   margin: 0 auto;
-  padding: 24px 32px;
+  padding: 40px 28px 80px;
 }
-.empty {
-  padding: 80px 0;
+
+/* 搜索井 */
+.well {
   text-align: center;
-  color: var(--td-text-color-placeholder);
+  margin-bottom: 30px;
+}
+.well__hello {
+  margin: 0 0 18px;
+  font-size: var(--xz-text-brand);
+  font-weight: 700;
+  color: var(--xz-ink);
+  letter-spacing: 0.12em;
+}
+.well__input {
+  max-width: 640px;
+  margin: 0 auto;
+  text-align: left;
+}
+.well__input :deep(.t-input) {
+  border-radius: var(--td-radius-large);
+  padding: 4px 6px;
+}
+.well__hint {
+  margin: 12px 0 0;
+  color: var(--xz-ink-3);
+  font-size: var(--xz-text-sm);
+}
+.well__count {
+  margin: 12px 0 0;
+  color: var(--xz-ink-2);
+  font-size: var(--xz-text-sm);
+}
+.well__count b {
+  color: var(--xz-lamp);
+  font-size: var(--xz-text-h3);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 结果行 */
+.results {
+  overflow: hidden;
 }
 .hit {
   cursor: pointer;
   align-items: flex-start;
-  padding: 10px 8px;
+  outline: none;
 }
-.main {
+.hit__kind {
+  flex-shrink: 0;
+  margin-top: 3px;
+  color: var(--xz-ink-2);
+}
+.hit__main {
   flex: 1;
-  margin-left: 12px;
   min-width: 0;
 }
-.line1 {
+.hit__line1 {
   display: flex;
   justify-content: space-between;
   align-items: baseline;
   gap: 12px;
 }
-.work {
-  color: var(--td-text-color-placeholder);
-  font-size: 12px;
+.hit__title {
+  font-family: "STKaiti", "KaiTi", "Noto Serif SC", serif;
+  font-size: var(--xz-text-h3);
+  color: var(--xz-ink);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
-.snippet {
-  margin-top: 4px;
-  color: var(--td-text-color-secondary);
-  font-size: 13px;
+.hit:hover .hit__title {
+  color: var(--xz-green);
+}
+.hit:focus-visible {
+  background: var(--xz-panel-2);
+}
+.hit__work {
+  flex-shrink: 0;
+  color: var(--xz-ink-3);
+  font-size: var(--xz-text-xs);
+}
+.hit__snippet {
+  margin: 4px 0 0;
+  color: var(--xz-ink-2);
+  font-size: var(--xz-text-sm);
   line-height: 1.6;
   overflow: hidden;
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
+}
+
+@media (max-width: 640px) {
+  .well__hello {
+    font-size: var(--xz-text-title);
+  }
+  .hit__work {
+    display: none;
+  }
 }
 </style>

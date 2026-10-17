@@ -1,13 +1,14 @@
 <script setup lang="ts">
 import { onMounted, ref } from "vue";
-import { useRoute, useRouter } from "vue-router";
-import { MessagePlugin } from "tdesign-vue-next";
+import { useRoute } from "vue-router";
+import { DialogPlugin, MessagePlugin } from "tdesign-vue-next";
 
 import { usePlanningStore, type TimelineEvent } from "../stores/planning";
 import { useChaptersStore } from "../stores/chapters";
+import WorkShell from "../components/WorkShell.vue";
+import EmptyState from "../components/EmptyState.vue";
 
 const route = useRoute();
-const router = useRouter();
 const store = usePlanningStore();
 const chapters = useChaptersStore();
 const workId = Number(route.params.id);
@@ -55,50 +56,62 @@ async function save() {
   }
 }
 
-async function removeEvent(ev: TimelineEvent) {
-  if (!window.confirm("删除这条时间线事件？")) return;
-  try {
-    await store.removeEvent(ev.id);
-    store.fetchTimeline(workId);
-  } catch (e) {
-    MessagePlugin.error((e as Error).message);
-  }
+function confirmRemove(ev: TimelineEvent) {
+  const dlg = DialogPlugin.confirm({
+    header: "删除这条时间线事件",
+    body: `${ev.storyTime} · ${ev.event.length > 40 ? ev.event.slice(0, 40) + "…" : ev.event}`,
+    theme: "warning",
+    confirmBtn: { content: "确认删除", variant: "base" },
+    onConfirm: async () => {
+      try {
+        await store.removeEvent(ev.id);
+        MessagePlugin.success("已删除");
+        store.fetchTimeline(workId);
+      } catch (e) {
+        MessagePlugin.error((e as Error).message);
+      } finally {
+        dlg.destroy();
+      }
+    },
+  });
 }
 
-const chapterLabel = (id: number | null) => (id == null ? null : chapters.list.find((c) => c.id === id)?.title ?? `#${id}`);
+/** 关联章节：徽标显示"第 N 章"（取 sortNo），hover 看标题 */
+const chapterNo = (id: number | null) => (id == null ? null : chapters.list.find((c) => c.id === id)?.sortNo ?? null);
+const chapterTitle = (id: number | null) => (id == null ? "" : chapters.list.find((c) => c.id === id)?.title ?? `#${id}`);
 const chapterOptions = () => chapters.list.map((c) => ({ value: c.id, label: `${c.sortNo}. ${c.title}` }));
 </script>
 
 <template>
-  <div class="page">
-    <header class="topbar">
-      <t-button variant="text" @click="router.push(`/works/${workId}`)">← 作品</t-button>
-      <span class="title">故事时间线</span>
+  <WorkShell>
+    <template #actions>
       <t-button theme="primary" @click="openCreate">+ 记录事件</t-button>
-    </header>
+    </template>
 
-    <main class="body">
-      <div v-if="store.timeline.length === 0" class="empty">时间轴空着——写第 40 章时你一定会回来看第 3 章"现在是第几天"</div>
+    <div v-if="store.timeline.length === 0">
+      <EmptyState
+        title="时间轴空着"
+        hint="写第 40 章时，你一定会回来看第 3 章「现在是第几天」——到那天之前，先把轴立起来"
+      >
+        <t-button theme="primary" @click="openCreate">记第一个事件</t-button>
+      </EmptyState>
+    </div>
 
-      <div class="axis">
-        <div v-for="ev in store.timeline" :key="ev.id" class="axis-item">
-          <div class="dot" />
-          <div class="card">
-            <div class="row">
-              <t-tag theme="primary" variant="light">{{ ev.storyTime }}</t-tag>
-              <span class="event">{{ ev.event }}</span>
-              <t-tag v-if="chapterLabel(ev.chapterId)" variant="outline" size="small" class="ch-tag">
-                第 {{ chapterLabel(ev.chapterId)?.split(".")[0] }} 章
-              </t-tag>
-              <t-space>
-                <t-button variant="text" size="small" @click="openEdit(ev)">编</t-button>
-                <t-button variant="text" theme="danger" size="small" @click="removeEvent(ev)">删</t-button>
-              </t-space>
-            </div>
-          </div>
+    <!-- 时间轴：一条灯芯竖线，节点是线上的珠子 -->
+    <div v-else class="axis">
+      <div v-for="ev in store.timeline" :key="ev.id" class="axis__item">
+        <span class="axis__dot" aria-hidden="true" />
+        <div class="axis__card xz-panel">
+          <span class="axis__time">{{ ev.storyTime }}</span>
+          <span class="axis__event">{{ ev.event }}</span>
+          <span v-if="chapterNo(ev.chapterId) !== null" class="axis__ch" :title="chapterTitle(ev.chapterId)">第 {{ chapterNo(ev.chapterId) }} 章</span>
+          <span class="axis__ops">
+            <t-button variant="text" size="small" @click="openEdit(ev)">编辑</t-button>
+            <t-button variant="text" theme="danger" size="small" @click="confirmRemove(ev)">删除</t-button>
+          </span>
         </div>
       </div>
-    </main>
+    </div>
 
     <t-dialog v-model:visible="dialogVisible" :header="editId ? '编辑事件' : '记录事件'" width="520" :footer="false">
       <t-form label-align="top">
@@ -114,69 +127,81 @@ const chapterOptions = () => chapters.list.map((c) => ({ value: c.id, label: `${
         <t-button block theme="primary" @click="save">保存</t-button>
       </t-form>
     </t-dialog>
-  </div>
+  </WorkShell>
 </template>
 
 <style scoped>
-.page {
-  min-height: 100%;
-}
-.topbar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 12px 32px;
-  background: #fff;
-  border-bottom: 1px solid var(--td-component-stroke);
-}
-.title {
-  font-weight: 600;
-}
-.body {
-  max-width: 960px;
-  margin: 0 auto;
-  padding: 24px 32px;
-}
 .axis {
   position: relative;
-  padding-left: 24px;
-  border-left: 2px solid var(--td-brand-color-3, #ccc);
+  padding-left: 26px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
 }
-.axis-item {
-  position: relative;
-  padding: 8px 0 20px;
-}
-.dot {
+/* 灯芯竖线 */
+.axis::before {
+  content: "";
   position: absolute;
-  left: -31px;
-  top: 14px;
+  left: 5px;
+  top: 6px;
+  bottom: 6px;
+  width: 2px;
+  background: linear-gradient(180deg, var(--xz-lamp-glow), var(--xz-line-2) 12%, var(--xz-line-2) 88%, transparent);
+}
+
+.axis__item {
+  position: relative;
+}
+/* 节点珠：灯橙芯 + 壁色环，压在轴线上 */
+.axis__dot {
+  position: absolute;
+  left: -26px;
+  top: 15px;
   width: 12px;
   height: 12px;
   border-radius: 50%;
-  background: var(--td-brand-color);
-  border: 2px solid #fff;
-  box-shadow: 0 0 0 2px var(--td-brand-color-3, #ccc);
+  background: var(--xz-lamp);
+  box-shadow: 0 0 0 3px var(--xz-wall), 0 0 10px var(--xz-lamp-glow);
 }
-.card {
-  background: #fff;
-  border-radius: 8px;
-  padding: 10px 14px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
-}
-.row {
+
+.axis__card {
   display: flex;
-  align-items: center;
-  gap: 10px;
+  align-items: baseline;
+  gap: 12px;
+  padding: 12px 16px;
 }
-.event {
+/* 故事内时间：楷体徽标，本行唯一强调 */
+.axis__time {
+  flex-shrink: 0;
+  font-family: "STKaiti", "KaiTi", "Noto Serif SC", serif;
+  font-size: var(--xz-text-sm);
+  color: var(--xz-lamp);
+  border: 1px solid var(--xz-lamp);
+  border-radius: var(--td-radius-small);
+  padding: 1px 8px;
+  white-space: nowrap;
+}
+.axis__event {
   flex: 1;
+  min-width: 0;
+  color: var(--xz-ink);
+  line-height: 1.6;
 }
-.ch-tag {
-  margin-right: 4px;
+.axis__ch {
+  flex-shrink: 0;
+  font-size: var(--xz-text-xs);
+  color: var(--xz-ink-2);
+  font-variant-numeric: tabular-nums;
 }
-.empty {
-  padding: 60px 0;
-  text-align: center;
-  color: var(--td-text-color-placeholder);
+.axis__ops {
+  flex-shrink: 0;
+  display: flex;
+  gap: 2px;
+}
+
+@media (max-width: 640px) {
+  .axis__ch {
+    display: none;
+  }
 }
 </style>
