@@ -1,5 +1,5 @@
 import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
-import { relations } from "drizzle-orm";
+import { relations as drizzleRelations } from "drizzle-orm";
 
 // 时间统一用 epoch 毫秒整数（Date.now() 直通，避免字符串时区歧义）
 
@@ -47,12 +47,111 @@ export const chapters = sqliteTable("chapters", {
   updatedAt: integer("updated_at").notNull(),
 });
 
-// 关系注册：db.query.* 的 with 查询依赖它（drizzle relational query）
-export const workRelations = relations(works, ({ many }) => ({
+// ---------- M2：设定库 / 大纲 / 伏笔 / 时间线 ----------
+
+/**
+ * 设定实体：统一模型，type 区分人物/场景/世界观/灵感碎片。
+ * extra 为 JSON 结构化扩展（人物卡的外貌/性格等表单字段），通用条目为 null。
+ */
+export const entities = sqliteTable("entities", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  workId: integer("work_id")
+    .notNull()
+    .references(() => works.id, { onDelete: "cascade" }),
+  type: text("type").notNull().default("character"), // character | scene | world | idea
+  name: text("name").notNull(),
+  content: text("content").notNull().default(""), // markdown 描述/正文
+  extra: text("extra", { mode: "json" }).$type<Record<string, string> | null>().notNull().default(null),
+  sort: integer("sort").notNull().default(0),
+  createdAt: integer("created_at").notNull(),
+  updatedAt: integer("updated_at").notNull(),
+});
+
+/** 关系网：从实体 → 到实体 */
+export const relations = sqliteTable("relations", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  workId: integer("work_id")
+    .notNull()
+    .references(() => works.id, { onDelete: "cascade" }),
+  fromId: integer("from_id")
+    .notNull()
+    .references(() => entities.id, { onDelete: "cascade" }),
+  toId: integer("to_id")
+    .notNull()
+    .references(() => entities.id, { onDelete: "cascade" }),
+  relType: text("rel_type").notNull(), // 如 青梅竹马/敌对/师徒
+  note: text("note").notNull().default(""),
+  createdAt: integer("created_at").notNull(),
+});
+
+/** 大纲树：parent_id + sort 邻接表（卷→章→细纲） */
+export const outlines = sqliteTable("outlines", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  workId: integer("work_id")
+    .notNull()
+    .references(() => works.id, { onDelete: "cascade" }),
+  parentId: integer("parent_id"), // null = 卷级根节点
+  title: text("title").notNull(),
+  content: text("content").notNull().default(""), // 细纲 markdown
+  sortNo: integer("sort_no").notNull().default(0),
+  createdAt: integer("created_at").notNull(),
+  updatedAt: integer("updated_at").notNull(),
+});
+
+/** 伏笔台账：埋设/回收可关联具体章节 */
+export const foreshadows = sqliteTable("foreshadows", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  workId: integer("work_id")
+    .notNull()
+    .references(() => works.id, { onDelete: "cascade" }),
+  content: text("content").notNull(), // 伏笔是什么、计划怎么收
+  plantedChapterId: integer("planted_chapter_id").references(() => chapters.id, { onDelete: "set null" }),
+  revealChapterId: integer("reveal_chapter_id").references(() => chapters.id, { onDelete: "set null" }),
+  status: text("status").notNull().default("open"), // open 未收 | closed 已收 | dropped 废弃
+  createdAt: integer("created_at").notNull(),
+  updatedAt: integer("updated_at").notNull(),
+});
+
+/** 故事时间线：事件挂在作品下，可关联章节 */
+export const timeline = sqliteTable("timeline", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  workId: integer("work_id")
+    .notNull()
+    .references(() => works.id, { onDelete: "cascade" }),
+  storyTime: text("story_time").notNull(), // 自由文本："第 3 年冬"
+  event: text("event").notNull(), // 事件描述 markdown
+  chapterId: integer("chapter_id").references(() => chapters.id, { onDelete: "set null" }),
+  sortNo: integer("sort_no").notNull().default(0),
+  createdAt: integer("created_at").notNull(),
+  updatedAt: integer("updated_at").notNull(),
+});
+
+export const ENTITY_TYPES = {
+  character: "人物",
+  scene: "场景",
+  world: "世界观",
+  idea: "灵感碎片",
+} as const;
+export type EntityType = keyof typeof ENTITY_TYPES;
+
+export const FORESHADOW_STATUS = {
+  open: "未收",
+  closed: "已收",
+  dropped: "废弃",
+} as const;
+export type ForeshadowStatus = keyof typeof FORESHADOW_STATUS;
+
+// ---------- 关系注册（db.query.* 的 with 查询依赖） ----------
+export const workRelations = drizzleRelations(works, ({ many }) => ({
   chapters: many(chapters),
+  entities: many(entities),
+  outlines: many(outlines),
+  foreshadows: many(foreshadows),
+  timeline: many(timeline),
+  entityLinks: many(relations),
 }));
 
-export const chapterRelations = relations(chapters, ({ one }) => ({
+export const chapterRelations = drizzleRelations(chapters, ({ one }) => ({
   work: one(works, { fields: [chapters.workId], references: [works.id] }),
 }));
 
