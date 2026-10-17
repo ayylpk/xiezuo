@@ -1,12 +1,378 @@
-/* 基础重置：页面高度铺满，TDesign 组件风格为主，这里只动全局最小必要项 */
+/* ============================================================
+   写作台 ·「夜书房」主题（日/夜双模式）
+   —— 色板按 ramp 组织：每个色族从暗到亮成组，语义 token 指过去
+   —— 护眼三禁：无纯白 / 无纯黑 / 无高饱和蓝光
+   —— 字体 ≤3：系统屏显 sans(正文) + 楷体(标题/书脊)；字阶固定
+   —— 组件只引用 --xz-* 语义层，切主题 = 换 :root token 值
+   ============================================================ */
+
+/* ---------- 夜书房（默认）：ramp ---------- */
+:root,
+html[data-theme="night"] {
+  /* 壁族（页面底 → 容器 → 组件底 → hover，四级抬亮） */
+  --xz-wall: #1e2228;
+  --xz-panel: #262b33;
+  --xz-panel-2: #2e3540;
+  --xz-panel-3: #39414e;
+
+  /* 纸族（灯下的稿纸，书卷/登录卡用） */
+  --xz-paper: #efe8d9;
+  --xz-paper-2: #e3dbc8;
+
+  /* 墨族（壁上的字：暖白三级） */
+  --xz-ink: #e9e3d4;
+  --xz-ink-2: #9d988a;
+  --xz-ink-3: #6b675e;
+
+  /* 纸上墨族（稿纸上的字：暖棕三级） */
+  --xz-paper-ink: #3f3a30;
+  --xz-paper-ink-2: #766e5e;
+  --xz-paper-ink-3: #a29883;
+
+  /* 线族 */
+  --xz-line: #333b47;
+  --xz-line-2: #46505f;
+  --xz-paper-line: rgba(196, 104, 72, 0.24); /* 信纸横线（砖红淡） */
+
+  /* 主色族：豆绿（夜底提亮档） */
+  --xz-green: #95a686;
+  --xz-green-hi: #a8b89a;
+  --xz-green-lo: #6c7b60;
+  --xz-green-wash: rgba(149, 166, 134, 0.15);
+
+  /* 热源族：灯橙 */
+  --xz-lamp: #e2a75e;
+  --xz-lamp-hi: #f0c088;
+  --xz-lamp-wash: rgba(226, 167, 94, 0.14);
+  --xz-lamp-glow: rgba(226, 167, 94, 0.32);
+
+  /* 信号族 */
+  --xz-red: #cb705a;
+  --xz-red-wash: rgba(203, 112, 90, 0.16);
+
+  /* ---------- TDesign 映射（夜） ---------- */
+  --td-brand-color: var(--xz-green);
+  --td-brand-color-hover: var(--xz-green-hi);
+  --td-brand-color-active: var(--xz-green-lo);
+  --td-brand-color-focus: rgba(149, 166, 134, 0.25);
+  --td-brand-color-light: var(--xz-green-wash);
+  --td-brand-color-light-hover: rgba(149, 166, 134, 0.22);
+  --td-brand-color-light-active: rgba(149, 166, 134, 0.28);
+  --td-brand-color-disabled: #55604b;
+
+  --td-success-color: var(--xz-green);
+  --td-success-color-hover: var(--xz-green-hi);
+  --td-success-color-light: var(--xz-green-wash);
+  --td-warning-color: var(--xz-lamp);
+  --td-warning-color-hover: var(--xz-lamp-hi);
+  --td-warning-color-light: var(--xz-lamp-wash);
+  --td-error-color: var(--xz-red);
+  --td-error-color-hover: #d8806b;
+  --td-error-color-light: var(--xz-red-wash);
+
+  --td-bg-color-page: var(--xz-wall);
+  --td-bg-color-container: var(--xz-panel);
+  --td-bg-color-container-hover: var(--xz-panel-3);
+  --td-bg-color-container-active: var(--xz-panel-2);
+  --td-bg-color-container-select: var(--xz-panel-2);
+  --td-bg-color-secondarycontainer: #232830;
+  --td-bg-color-secondarycontainer-hover: #2a313b;
+  --td-bg-color-secondarycontainer-active: #2e3641;
+  --td-bg-color-component: var(--xz-panel-2);
+  --td-bg-color-component-hover: var(--xz-panel-3);
+  --td-bg-color-component-active: #414a58;
+  --td-bg-color-component-disabled: #2a3038;
+  --td-bg-color-specialcomponent: var(--xz-panel);
+
+  --td-text-color-primary: var(--xz-ink);
+  --td-text-color-secondary: var(--xz-ink-2);
+  --td-text-color-placeholder: var(--xz-ink-3);
+  --td-text-color-disabled: #565d68;
+  --td-text-color-anti: #241f18;
+
+  --td-border-level-1-color: var(--xz-line);
+  --td-border-level-2-color: var(--xz-line-2);
+  --td-component-stroke: var(--xz-line);
+  --td-component-border: var(--xz-line-2);
+
+  /* 阴影=深度；夜底用纯黑透明（不掺色，掺色读作脏） */
+  --td-shadow-1: 0 1px 3px rgba(0, 0, 0, 0.4), 0 4px 14px rgba(0, 0, 0, 0.26);
+  --td-shadow-2: 0 4px 10px rgba(0, 0, 0, 0.42), 0 12px 32px rgba(0, 0, 0, 0.32);
+  --td-shadow-3: 0 8px 20px rgba(0, 0, 0, 0.5), 0 18px 52px rgba(0, 0, 0, 0.38);
+  --xz-lamp-shadow: 0 6px 24px var(--xz-lamp-glow);
+
+  --td-radius-small: 4px;
+  --td-radius-default: 6px;
+  --td-radius-medium: 8px;
+  --td-radius-large: 10px;
+}
+
+/* ---------- 白天（暖纸）：同结构 ramp ---------- */
+html[data-theme="day"] {
+  --xz-wall: #f2ede2;
+  --xz-panel: #faf7f0;
+  --xz-panel-2: #efe9db;
+  --xz-panel-3: #e6dfcd;
+
+  --xz-paper: #fdfaf3;
+  --xz-paper-2: #f3eddf;
+
+  --xz-ink: #3f3a30;
+  --xz-ink-2: #7d7565;
+  --xz-ink-3: #a89e8b;
+
+  --xz-paper-ink: #3f3a30;
+  --xz-paper-ink-2: #766e5e;
+  --xz-paper-ink-3: #a29883;
+
+  --xz-line: #e0d8c5;
+  --xz-line-2: #cbc0a6;
+  --xz-paper-line: rgba(196, 104, 72, 0.26);
+
+  --xz-green: #6b7b5a;
+  --xz-green-hi: #5d6d4d;
+  --xz-green-lo: #7c8b6c;
+  --xz-green-wash: rgba(107, 123, 90, 0.13);
+
+  --xz-lamp: #cf8c42;
+  --xz-lamp-hi: #b87a36;
+  --xz-lamp-wash: rgba(207, 140, 66, 0.13);
+  --xz-lamp-glow: rgba(207, 140, 66, 0.22);
+
+  --xz-red: #b0563f;
+  --xz-red-wash: rgba(176, 86, 63, 0.12);
+
+  --td-brand-color: var(--xz-green);
+  --td-brand-color-hover: var(--xz-green-hi);
+  --td-brand-color-active: #516243;
+  --td-brand-color-focus: rgba(107, 123, 90, 0.2);
+  --td-brand-color-light: var(--xz-green-wash);
+  --td-brand-color-light-hover: rgba(107, 123, 90, 0.18);
+  --td-brand-color-light-active: rgba(107, 123, 90, 0.24);
+  --td-brand-color-disabled: #b8c0aa;
+
+  --td-success-color: var(--xz-green);
+  --td-success-color-hover: var(--xz-green-hi);
+  --td-success-color-light: var(--xz-green-wash);
+  --td-warning-color: #c08340;
+  --td-warning-color-hover: #a87235;
+  --td-warning-color-light: var(--xz-lamp-wash);
+  --td-error-color: var(--xz-red);
+  --td-error-color-hover: #9c4c38;
+  --td-error-color-light: var(--xz-red-wash);
+
+  --td-bg-color-page: var(--xz-wall);
+  --td-bg-color-container: var(--xz-panel);
+  --td-bg-color-container-hover: #f3eee2;
+  --td-bg-color-container-active: var(--xz-panel-2);
+  --td-bg-color-container-select: var(--xz-panel);
+  --td-bg-color-secondarycontainer: #f6f1e6;
+  --td-bg-color-secondarycontainer-hover: #f0eadb;
+  --td-bg-color-secondarycontainer-active: #eae2d0;
+  --td-bg-color-component: var(--xz-panel-2);
+  --td-bg-color-component-hover: #e3dccb;
+  --td-bg-color-component-active: #d9d1bc;
+  --td-bg-color-component-disabled: #ece5d5;
+  --td-bg-color-specialcomponent: var(--xz-panel);
+
+  --td-text-color-primary: var(--xz-ink);
+  --td-text-color-secondary: var(--xz-ink-2);
+  --td-text-color-placeholder: var(--xz-ink-3);
+  --td-text-color-disabled: #b3ab99;
+  --td-text-color-anti: #faf7f0;
+
+  --td-border-level-1-color: var(--xz-line);
+  --td-border-level-2-color: var(--xz-line-2);
+  --td-component-stroke: var(--xz-line);
+  --td-component-border: var(--xz-line-2);
+
+  --td-shadow-1: 0 1px 3px rgba(84, 70, 46, 0.06), 0 4px 14px rgba(84, 70, 46, 0.07);
+  --td-shadow-2: 0 4px 10px rgba(84, 70, 46, 0.08), 0 12px 30px rgba(84, 70, 46, 0.09);
+  --td-shadow-3: 0 8px 18px rgba(84, 70, 46, 0.1), 0 18px 46px rgba(84, 70, 46, 0.12);
+  --xz-lamp-shadow: 0 6px 22px var(--xz-lamp-glow);
+}
+
+/* ---------- 字阶（semantic names，全站唯一来源） ---------- */
+:root {
+  --xz-text-brand: 34px;    /* 登录大字 */
+  --xz-text-title: 21px;    /* 页标题 */
+  --xz-text-h3: 17px;       /* 卡标题 */
+  --xz-text-body: 15px;     /* 正文 */
+  --xz-text-sm: 13px;       /* 说明 */
+  --xz-text-xs: 12px;       /* meta */
+}
+
+/* ---------- 基础 ---------- */
 html,
 body,
 #app {
   height: 100%;
   margin: 0;
-  background: #f5f6f8;
+  background: var(--xz-wall);
+  color: var(--xz-ink);
 }
 
 * {
   box-sizing: border-box;
 }
+
+body {
+  line-height: 1.65;
+  font-size: var(--xz-text-body);
+}
+
+/* 显示字体：楷体栈（标题/书脊/品牌） */
+.xz-display {
+  font-family: "STKaiti", "KaiTi", "Noto Serif SC", serif;
+  letter-spacing: 0.08em;
+}
+
+h1, h2, h3, h4 {
+  line-height: 1.25;
+  font-weight: 600;
+}
+
+/* 滚动条随主题 */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--xz-line-2);
+  border-radius: 5px;
+  border: 2px solid var(--xz-wall);
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* 键盘聚焦：灯橙环（两主题都可见） */
+:focus-visible {
+  outline: 2px solid var(--xz-lamp);
+  outline-offset: 2px;
+}
+
+/* ---------- 交互配方 ---------- */
+/* 按压回弹：0.96（better-ui 规定值），可中断 transition */
+.t-button:active,
+.book:active {
+  transform: scale(0.96);
+}
+
+/* 主题切换时全场柔和过渡 */
+html.theme-switching,
+html.theme-switching * {
+  transition: background-color 0.28s ease, border-color 0.28s ease, color 0.18s ease;
+}
+
+/* 尊重减少动效偏好 */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ============================================================
+   全局共享组件类（内页复用，深色面板上生效）
+   ============================================================ */
+
+/* 状态印章：略歪的边框小章。纸面（书卷卡）另有局部加深版本 */
+.xz-stamp {
+  display: inline-block;
+  padding: 1px 8px;
+  border: 1.5px solid currentColor;
+  border-radius: 2px;
+  font-family: "STKaiti", "KaiTi", serif;
+  font-size: 11px;
+  letter-spacing: 0.22em;
+  transform: rotate(-4deg);
+  opacity: 0.85;
+  white-space: nowrap;
+}
+.xz-stamp--ongoing { color: var(--xz-green); }
+.xz-stamp--finished { color: var(--xz-lamp); }
+.xz-stamp--shelved { color: var(--xz-ink-3); }
+.xz-stamp--open { color: var(--xz-lamp); }      /* 伏笔：未回收 */
+.xz-stamp--closed { color: var(--xz-green); }    /* 伏笔：已回收 */
+.xz-stamp--dropped { color: var(--xz-ink-3); }   /* 伏笔：已遗忘 */
+
+/* 面板：夜壁上的工作台面 */
+.xz-panel {
+  background: var(--xz-panel);
+  border: 1px solid var(--xz-line);
+  border-radius: var(--td-radius-medium);
+  box-shadow: var(--td-shadow-1);
+}
+
+/* 列表行规约：统一 hover 与分隔（取代裸 t-list 平铺） */
+.xz-rows {
+  display: flex;
+  flex-direction: column;
+}
+.xz-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 13px 16px;
+  border-bottom: 1px solid var(--xz-line);
+  transition: background-color 0.14s ease;
+}
+.xz-row:last-child {
+  border-bottom: none;
+}
+.xz-row:hover {
+  background: var(--xz-panel-2);
+}
+
+/* 行内章节序号徽标：章数即坐标 */
+.xz-no {
+  flex-shrink: 0;
+  min-width: 34px;
+  height: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--xz-line-2);
+  border-radius: var(--td-radius-small);
+  font-size: var(--xz-text-xs);
+  color: var(--xz-ink-2);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Markdown 正文排版（编辑器预览/随笔共用）：窄栏舒适行宽 */
+.xz-md {
+  line-height: 1.85;
+  color: var(--xz-ink);
+  word-break: break-word;
+}
+.xz-md p { margin: 0 0 12px; }
+.xz-md h1, .xz-md h2, .xz-md h3, .xz-md h4 {
+  margin: 24px 0 10px;
+  line-height: 1.3;
+}
+.xz-md ul, .xz-md ol { padding-left: 22px; margin: 0 0 12px; }
+.xz-md blockquote {
+  margin: 14px 0;
+  padding: 2px 0 2px 14px;
+  border-left: 3px solid var(--xz-lamp);
+  color: var(--xz-ink-2);
+}
+.xz-md code {
+  font-family: "Cascadia Code", Consolas, monospace;
+  font-size: 0.92em;
+  background: var(--xz-panel-2);
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+.xz-md pre {
+  background: var(--xz-panel-2);
+  padding: 12px 14px;
+  border-radius: var(--td-radius-default);
+  overflow: auto;
+}
+.xz-md table { border-collapse: collapse; margin: 12px 0; }
+.xz-md th, .xz-md td { border: 1px solid var(--xz-line-2); padding: 6px 10px; }
+.xz-md hr { border: none; border-top: 1px solid var(--xz-line-2); margin: 20px 0; }
