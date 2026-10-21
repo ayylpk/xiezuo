@@ -134,6 +134,27 @@ describe("批注级联：宿主删了不留孤儿", () => {
       expect(after.annotations.length).toBe(0);
     }
   });
+  test("删整本作品 → 全书批注一起清除（外键管不到的路径）", async () => {
+    const w = (await (await app.request("/api/works", { method: "POST", headers: ctx(), body: JSON.stringify({ title: "整本删" }) })).json()).work;
+    const ch = (
+      await (await app.request(`/api/works/${w.id}/chapters`, { method: "POST", headers: ctx(), body: JSON.stringify({ title: "第1章" }) })).json()
+    ).chapter;
+    const ent = (
+      await (await app.request(`/api/works/${w.id}/entities`, { method: "POST", headers: ctx(), body: JSON.stringify({ name: "角色A", type: "character" }) })).json()
+    ).entity;
+    for (const body of [
+      { entityType: "chapter", entityId: ch.id, content: "章批注" },
+      { entityType: "entity", entityId: ent.id, content: "设定批注" },
+    ]) {
+      await app.request("/api/annotations", { method: "POST", headers: ctx(), body: JSON.stringify(body) });
+    }
+
+    await app.request(`/api/works/${w.id}`, { method: "DELETE", headers: ctx() });
+    const afterCh = await (await app.request(`/api/annotations?entityType=chapter&entityId=${ch.id}`, { headers: ctx() })).json();
+    const afterEnt = await (await app.request(`/api/annotations?entityType=entity&entityId=${ent.id}`, { headers: ctx() })).json();
+    expect(afterCh.annotations.length).toBe(0);
+    expect(afterEnt.annotations.length).toBe(0);
+  });
 });
 
 describe("notes 排序", () => {

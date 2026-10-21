@@ -1,5 +1,5 @@
 import type { BunSQLiteDatabase } from "drizzle-orm/bun-sqlite";
-import { count, desc, eq, sum } from "drizzle-orm";
+import { and, count, desc, eq, inArray, or, sum } from "drizzle-orm";
 
 import * as schema from "../db/schema";
 
@@ -80,6 +80,35 @@ export async function updateWork(
 export async function deleteWork(db: BunSQLiteDatabase<typeof schema>, id: number) {
   const exists = await db.query.works.findFirst({ where: eq(schema.works.id, id), columns: { id: true } });
   if (!exists) throw new NotFoundError("作品不存在");
-  // 章节由外键 ON DELETE CASCADE 一并清除
+
+  // 章节/设定/大纲/伏笔/时间线/随笔由外键 ON DELETE CASCADE 一并清除；
+  // 但批注是多态挂载、没有外键，级联管不到，删作品前得先把它们捞出来清掉。
+  const groups: [schema.AnnotationTarget, number[]][] = await collectOwnedIds(db, id);
+  const conds = groups
+    .filter(([, ids]) => ids.length > 0)
+    .map(([type, ids]) => and(eq(schema.annotations.entityType, type), inArray(schema.annotations.entityId, ids)));
+  if (conds.length > 0) await db.delete(schema.annotations).where(or(...conds));
+
   await db.delete(schema.works).where(eq(schema.works.id, id));
+}
+
+/** 本作品下六类可挂批注的实体 id 集合（删作品时用来清批注） */
+async function collectOwnedIds(db: BunSQLiteDatabase<typeof schema>, workId: number): Promise<[schema.AnnotationTarget, number[]][]> {
+  const [chs, ents, outs, fs, tl, nts] = await Promise.all([
+    db.select({ id: schema.chapters.id }).from(schema.chapters).where(eq(schema.chapters.workId, workId)),
+    db.select({ id: schema.entities.id }).from(schema.entities).where(eq(schema.entities.workId, workId)),
+    db.select({ id: schema.outlines.id }).from(schema.outlines).where(eq(schema.outlines.workId, workId)),
+    db.select({ id: schema.foreshadows.id }).from(schema.foreshadows).where(eq(schema.foreshadows.workId, workId)),
+    db.select({ id: schema.timeline.id }).from(schema.timeline).where(eq(schema.timeline.workId, workId)),
+    db.select({ id: schema.notes.id }).from(schema.notes).where(eq(schema.notes.workId, workId)),
+  ]);
+  const ids = (rows: { id: number }[]) => rows.map((r) => r.id);
+  return [
+    ["chapter", ids(chs)],
+    ["entity", ids(ents)],
+    ["outline", ids(outs)],
+    ["foreshadow", ids(fs)],
+    ["timeline", ids(tl)],
+    ["note", ids(nts)],
+  ];
 }
