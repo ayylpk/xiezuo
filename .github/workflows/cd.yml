@@ -101,6 +101,11 @@ jobs:
             set -e
             cd "${{ env.DEPLOY_DIR }}"
 
+            # 目录可能是别人建的（比如 ubuntu 建、root 来部署），git 的 safe.directory
+            # 保护会直接甩 "detected dubious ownership" 并 exit 128。注册一次即可，
+            # --global 会写进该用户的 ~/.gitconfig，后续运行都有效。
+            git config --global --add safe.directory "${{ env.DEPLOY_DIR }}"
+
             # git reset --hard 只回退被跟踪文件，不会动未跟踪的 data/（SQLite 数据）与 .env（口令）
             git fetch --all --prune
             git reset --hard "${{ github.event.workflow_run.head_sha || github.sha }}"
