@@ -1,0 +1,36 @@
+# 写作台 · 生产编排
+#
+# 用法（服务器上，项目根目录）：
+#   1. 建 .env 写 INITIAL_PASSWORD（首次启动建账号用，之后不再读）
+#        echo 'INITIAL_PASSWORD=换成你的强口令' > .env
+#   2. docker compose up -d --build
+#   3. 浏览器开 http://<服务器IP>:8081
+#
+# 数据在 ./data（宿主机），容器重建不影响；git reset --hard 也不会删未跟踪的 data/ 与 .env。
+services:
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    environment:
+      DB_PATH: /app/data/xiezuo.db
+      PORT: "3000"
+      NODE_ENV: production
+      # 首次启动（users 表为空）必须给，否则 index.ts 里的 ensureInitUser 会直接抛错退出。
+      # 跑起来之后这个值不再生效，改密码要走别的方式。
+      INITIAL_USERNAME: ${INITIAL_USERNAME:-admin}
+      INITIAL_PASSWORD: ${INITIAL_PASSWORD:?首次启动必须设置 INITIAL_PASSWORD（写进 .env）}
+    volumes:
+      - ./data:/app/data
+    # 不对外暴露端口：只有 web 容器能访问，外界走 nginx 的 /api 反代
+    expose:
+      - "3000"
+
+  web:
+    build: ./frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      # 宿主机端口分开：8080 留给月畔小站，写作台默认 8081（可用 WEB_PORT 覆盖）。
+      # 容器内的 80 / 3000 是各自网络内的私有端口，不会和别的项目撞。
+      - "${WEB_PORT:-8081}:80"

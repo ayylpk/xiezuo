@@ -1,0 +1,130 @@
+# 写作台 · CD（部署到服务器）
+#
+# 走"路线 2"：SSH 进服务器就地 git 拉取 + docker compose 重建。
+# 不用镜像仓库那套（服务器本来就要装 Docker，少一个环节少一处坑）。
+#
+# 【必须先在 GitHub 仓库配好，否则这个工作流会红】
+#   Settings → Secrets and variables → Actions → **Secrets** 标签页（不是 Variables！）
+#     SSH_HOST   服务器 IP 或域名
+#     SSH_USER   登录用户（通常是 root 或 ubuntu）
+#     SSH_KEY    私钥全文（-----BEGIN ... 到 ...END ...----- 整段粘贴，不是 .pub）
+#     SSH_PORT   可选，默认 22
+#   Variables 标签页（明文，可选）
+#     DEPLOY_DIR 服务器上的部署目录，默认 /srv/xiezuo
+#
+# 【首次部署前，服务器上要先做一次】
+#   git clone <repo> /srv/xiezuo && cd /srv/xiezuo
+#   echo 'INITIAL_PASSWORD=你的强口令' > .env      # 首次建账号用，之后不再读
+#   docker compose up -d --build
+#   （端口 8081，宿主机与月畔小站的 8080 分开）
+#
+# 触发：CI 跑完 **且成功** 才部署；也可在 Actions 页面手动 Run workflow。
+name: CD
+
+on:
+  workflow_run:
+    workflows: ["CI"] # 必须与 ci.yml 顶部 name: 完全一致
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: cd-main
+  cancel-in-progress: false # 部署不能被打断，排队跑
+
+jobs:
+  deploy:
+    name: 部署到服务器
+    if: >-
+      github.event_name == 'workflow_dispatch'
+      || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    # 别名兼容集中在这一处，下面只写 env.X，不会漏改。
+    # 本项目仓库里实际建的是 XIEZUOIP / NAME / PRIMARY_KEY 这三个名字，
+    # 所以它们排在最前；标准名（SSH_*）留着，换机器配也不用改文件。
+    env:
+      DEP_HOST: ${{ secrets.XIEZUOIP || secrets.SSH_HOST || secrets.SERVER_HOST || secrets.HOST || secrets.IP }}
+      DEP_USER: ${{ secrets.NAME || secrets.SSH_USER || secrets.SERVER_USER || secrets.USER }}
+      DEP_KEY: ${{ secrets.PRIMARY_KEY || secrets.SSH_KEY || secrets.SSH_PRIVATE_KEY }}
+      DEP_PORT: ${{ secrets.SSH_PORT || secrets.SERVER_PORT || '22' }}
+      DEPLOY_DIR: ${{ vars.DEPLOY_DIR || '/srv/xiezuo' }}
+      WEB_PORT: ${{ vars.WEB_PORT || '8081' }}
+    steps:
+      - name: 检查 Secrets 是否齐全（缺哪个点名报哪个）
+        env:
+          P_XIEZUOIP: ${{ secrets.XIEZUOIP }}
+          P_SSH_HOST: ${{ secrets.SSH_HOST }}
+          P_NAME: ${{ secrets.NAME }}
+          P_SSH_USER: ${{ secrets.SSH_USER }}
+          P_PRIMARY_KEY: ${{ secrets.PRIMARY_KEY }}
+          P_SSH_KEY: ${{ secrets.SSH_KEY }}
+        run: |
+          # 诊断走 ::notice:: / ::error::，它们会成为 check-run 注解，不登录也能读到
+          mark() { if [ -n "$1" ]; then printf '已配'; else printf '未配'; fi; }
+          echo "::notice::命中表(值不打印) | 地址: XIEZUOIP=$(mark "$P_XIEZUOIP") SSH_HOST=$(mark "$P_SSH_HOST") | 用户: NAME=$(mark "$P_NAME") SSH_USER=$(mark "$P_SSH_USER") | 私钥: PRIMARY_KEY=$(mark "$P_PRIMARY_KEY") SSH_KEY=$(mark "$P_SSH_KEY")"
+
+          miss=""
+          if [ -z "$DEP_HOST" ]; then miss=1; echo "::error::缺「服务器地址」——建 XIEZUOIP / SSH_HOST / SERVER_HOST / HOST"; fi
+          if [ -z "$DEP_USER" ]; then miss=1; echo "::error::缺「登录用户」——建 NAME / SSH_USER / SERVER_USER"; fi
+          if [ -z "$DEP_KEY"  ]; then miss=1; echo "::error::缺「私钥」——建 PRIMARY_KEY / SSH_KEY，要整段私钥不是 .pub"; fi
+          if [ -n "$miss" ]; then
+            echo "位置：Settings → Secrets and variables → Actions 的 Secrets 标签页"
+            echo "网页：https://github.com/${{ github.repository }}/settings/secrets/actions"
+            exit 1
+          fi
+          echo "地址、用户、私钥均已取到（值不打印），私钥长度 ${#DEP_KEY} 字符"
+
+          # 私钥自检：能解析就说明贴的是完整私钥；顺便打印它对应的公钥指纹，
+          # 拿去和服务器 ~/.ssh/authorized_keys 里那把对一下，就知道贴错了没有。
+          # 指纹是公钥的摘要，打印它不泄露私钥。
+          printf '%s\n' "$DEP_KEY" > /tmp/deploy_key
+          chmod 600 /tmp/deploy_key
+          if ssh-keygen -y -P '' -f /tmp/deploy_key < /dev/null > /tmp/deploy_key.pub 2>/dev/null; then
+            echo "::notice::私钥可解析，对应公钥指纹 $(ssh-keygen -lf /tmp/deploy_key.pub | awk '{print $2}')（拿去和服务器 authorized_keys 比对）"
+          else
+            echo "::error::私钥无法解析——多半是粘贴被截断、带了口令保护，或误贴了 .pub 公钥"
+            exit 1
+          fi
+          rm -f /tmp/deploy_key /tmp/deploy_key.pub
+
+      - name: 远程拉取并重启容器
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ env.DEP_HOST }}
+          username: ${{ env.DEP_USER }}
+          key: ${{ env.DEP_KEY }}
+          port: ${{ env.DEP_PORT }}
+          # 首次在服务器构建镜像要装依赖 + 打包，默认超时不够
+          command_timeout: 20m
+          # 不要写 script_stop —— v1 已移除该参数，失败中断靠下面的 set -e
+          script: |
+            set -e
+            cd "${{ env.DEPLOY_DIR }}"
+
+            # git reset --hard 只回退被跟踪文件，不会动未跟踪的 data/（SQLite 数据）与 .env（口令）
+            git fetch --all --prune
+            git reset --hard "${{ github.event.workflow_run.head_sha || github.sha }}"
+
+            # 重建并滚动替换。数据在挂载的 ./data 里，容器换掉不影响。
+            docker compose up -d --build
+
+            # 清掉被替换下来的旧镜像层，免得磁盘越跑越满
+            docker image prune -f
+
+            echo "--- 当前容器 ---"
+            docker compose ps
+
+            # 部署自检：反代 /api 必须通（未登录也应 200，这是 health 注册顺序修过的地方）
+            echo "--- 健康检查 ---"
+            for i in 1 2 3 4 5 6 7 8 9 10; do
+              if curl -fsS --max-time 5 "http://127.0.0.1:${{ env.WEB_PORT }}/api/health"; then
+                echo "  health OK (端口 ${{ env.WEB_PORT }})"
+                break
+              fi
+              if [ "$i" = "10" ]; then
+                echo "  health 连续 10 次失败，反代或后端有问题"
+                docker compose logs --tail 50
+                exit 1
+              fi
+              sleep 3
+            done

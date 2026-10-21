@@ -1,1 +1,15 @@
 .shots/
+
+# 容器部署：SQLite 数据目录与 .env（含 INITIAL_PASSWORD）都不进库
+/data/
+.env
+
+# 密钥/证书——绝不允许进仓库
+# 2026-10-21：根目录曾出现 git_actions / git_actions.pub（私钥被复制进工作区），
+# 且与 ~/.ssh/git_actions 不是同一把钥匙（指纹不同）。私钥只该进 GitHub Secret。
+git_actions
+git_actions.pub
+*.pem
+*.key
+id_ed25519*
+id_rsa*
