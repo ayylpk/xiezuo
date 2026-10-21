@@ -1,0 +1,61 @@
+# 写作台 · CI（持续集成）
+#
+# 触发：push 到 main、任何 PR。
+# 干什么：后端 72 项测试 + 类型检查；前端构建（npm run build 内含 vue-tsc 类型检查）。
+# 不干什么：不部署。部署在 cd.yml，且必须等这里全绿。
+#
+# 三条命令都在本机验证过，不是照抄模板：
+#   - bun install --frozen-lockfile  → Checked 9 installs（no changes），lock 与 package.json 一致
+#   - bun test                       → 72 pass / 0 fail（9 个文件）
+#   - bunx tsc --noEmit              → 0 error（2026-10-21 刚清完既存类型错误，加进来防回归）
+#   - npm ci --dry-run               → 成功，frontend/package-lock.json 与 package.json 同步
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# 同一分支连续 push 时，取消上一次没跑完的，省 runner
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: 后端测试（72 项 + 类型检查）
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - name: 安装依赖
+        run: bun install --frozen-lockfile
+      - name: 跑测试
+        # 测试全跑在 bun:sqlite 内存库上（freshDbForTest），不碰任何真库文件，CI 里安全
+        run: bun test
+      - name: 类型检查
+        run: bunx tsc --noEmit
+
+  frontend:
+    name: 前端构建（含类型检查）
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: 安装依赖
+        run: npm ci
+      - name: 构建
+        # build = vue-tsc -b && vite build，类型错误会让 CI 红
+        run: npm run build
