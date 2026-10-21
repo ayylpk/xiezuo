@@ -3,6 +3,7 @@ import { and, eq, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/sqlite-core";
 
 import * as schema from "../db/schema";
+import { purgeAnnotations } from "./annotations";
 import { NotFoundError } from "./works";
 
 export type EntityType = keyof typeof schema.ENTITY_TYPES;
@@ -73,8 +74,9 @@ export async function updateEntity(
 export async function deleteEntity(db: BunSQLiteDatabase<typeof schema>, id: number) {
   const exists = await db.query.entities.findFirst({ where: eq(schema.entities.id, id), columns: { id: true } });
   if (!exists) throw new NotFoundError("条目不存在");
-  // 关系由外键 ON DELETE CASCADE 一并清除
+  // 关系由外键 ON DELETE CASCADE 一并清除；批注是多态挂载，没有外键，需手动清
   await db.delete(schema.entities).where(eq(schema.entities.id, id));
+  await purgeAnnotations(db, "entity", id);
 }
 
 // ---------- 关系网 ----------

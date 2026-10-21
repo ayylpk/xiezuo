@@ -97,6 +97,45 @@ describe("annotations", () => {
   });
 });
 
+describe("批注级联：宿主删了不留孤儿", () => {
+  test("删章节 → 挂在它上面的批注一并清除", async () => {
+    const ch = (
+      await (await app.request(`/api/works/${workId}/chapters`, { method: "POST", headers: ctx(), body: JSON.stringify({ title: "临时章" }) })).json()
+    ).chapter;
+    await app.request("/api/annotations", {
+      method: "POST",
+      headers: ctx(),
+      body: JSON.stringify({ entityType: "chapter", entityId: ch.id, content: "这条应随章节一起消失" }),
+    });
+    const before = await (await app.request(`/api/annotations?entityType=chapter&entityId=${ch.id}`, { headers: ctx() })).json();
+    expect(before.annotations.length).toBe(1);
+
+    await app.request(`/api/chapters/${ch.id}`, { method: "DELETE", headers: ctx() });
+    const after = await (await app.request(`/api/annotations?entityType=chapter&entityId=${ch.id}`, { headers: ctx() })).json();
+    expect(after.annotations.length).toBe(0);
+  });
+
+  test("删大纲卷 → 整棵子树的批注都清除", async () => {
+    const post = async (body: unknown) =>
+      (await (await app.request(`/api/works/${workId}/outlines`, { method: "POST", headers: ctx(), body: JSON.stringify(body) })).json()).outline;
+    const root = await post({ title: "第一卷" });
+    const child = await post({ title: "第 1 章细纲", parentId: root.id });
+    for (const id of [root.id, child.id]) {
+      await app.request("/api/annotations", {
+        method: "POST",
+        headers: ctx(),
+        body: JSON.stringify({ entityType: "outline", entityId: id, content: `批注@${id}` }),
+      });
+    }
+
+    await app.request(`/api/outlines/${root.id}`, { method: "DELETE", headers: ctx() });
+    for (const id of [root.id, child.id]) {
+      const after = await (await app.request(`/api/annotations?entityType=outline&entityId=${id}`, { headers: ctx() })).json();
+      expect(after.annotations.length).toBe(0);
+    }
+  });
+});
+
 describe("notes", () => {
   test("三种类型各建一条 + 类型过滤", async () => {
     for (const [type, content] of [

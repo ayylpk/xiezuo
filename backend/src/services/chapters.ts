@@ -2,6 +2,7 @@ import type { BunSQLiteDatabase } from "drizzle-orm/bun-sqlite";
 import { eq, max } from "drizzle-orm";
 
 import * as schema from "../db/schema";
+import { purgeAnnotations } from "./annotations";
 import { NotFoundError } from "./works";
 
 /**
@@ -100,6 +101,7 @@ export async function deleteChapter(db: BunSQLiteDatabase<typeof schema>, id: nu
   const exists = await db.query.chapters.findFirst({ where: eq(schema.chapters.id, id), columns: { id: true } });
   if (!exists) throw new NotFoundError("章节不存在");
   await db.delete(schema.chapters).where(eq(schema.chapters.id, id));
+  await purgeAnnotations(db, "chapter", id); // 批注无外键，需手动清
 }
 
 /** 触碰作品 updatedAt：列表排序让"最近更新的作品"浮上来 */

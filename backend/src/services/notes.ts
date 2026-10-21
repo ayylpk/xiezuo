@@ -2,6 +2,7 @@ import type { BunSQLiteDatabase } from "drizzle-orm/bun-sqlite";
 import { and, eq } from "drizzle-orm";
 
 import * as schema from "../db/schema";
+import { purgeAnnotations } from "./annotations";
 import { NotFoundError } from "./works";
 import type { NoteType } from "../db/schema";
 
@@ -45,4 +46,5 @@ export async function deleteNote(db: BunSQLiteDatabase<typeof schema>, id: numbe
   const exists = await db.query.notes.findFirst({ where: eq(schema.notes.id, id), columns: { id: true } });
   if (!exists) throw new NotFoundError("随笔不存在");
   await db.delete(schema.notes).where(eq(schema.notes.id, id));
+  await purgeAnnotations(db, "note", id);
 }

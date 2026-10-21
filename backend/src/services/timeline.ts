@@ -2,6 +2,7 @@ import type { BunSQLiteDatabase } from "drizzle-orm/bun-sqlite";
 import { eq, sql } from "drizzle-orm";
 
 import * as schema from "../db/schema";
+import { purgeAnnotations } from "./annotations";
 import { NotFoundError } from "./works";
 
 export async function listTimeline(db: BunSQLiteDatabase<typeof schema>, workId: number) {
@@ -61,6 +62,7 @@ export async function deleteTimeline(db: BunSQLiteDatabase<typeof schema>, id: n
   const exists = await db.query.timeline.findFirst({ where: eq(schema.timeline.id, id), columns: { id: true } });
   if (!exists) throw new NotFoundError("事件不存在");
   await db.delete(schema.timeline).where(eq(schema.timeline.id, id));
+  await purgeAnnotations(db, "timeline", id);
 }
 
 async function assertWork(db: BunSQLiteDatabase<typeof schema>, workId: number) {

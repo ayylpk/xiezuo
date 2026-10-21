@@ -1,5 +1,5 @@
 import type { BunSQLiteDatabase } from "drizzle-orm/bun-sqlite";
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 
 import * as schema from "../db/schema";
 import { NotFoundError } from "./works";
@@ -61,4 +61,21 @@ export async function deleteAnnotation(db: BunSQLiteDatabase<typeof schema>, id:
   const exists = await db.query.annotations.findFirst({ where: eq(schema.annotations.id, id), columns: { id: true } });
   if (!exists) throw new NotFoundError("批注不存在");
   await db.delete(schema.annotations).where(eq(schema.annotations.id, id));
+}
+
+/**
+ * 宿主被删除时清理其上的批注。
+ * annotations 是"多态挂载"（entity_type + entity_id），没有外键可级联，
+ * 所以每个 delete 都必须显式调用这里，否则批注成孤儿：查不到目标、却还在库里。
+ */
+export async function purgeAnnotations(
+  db: BunSQLiteDatabase<typeof schema>,
+  entityType: AnnotationTarget,
+  entityIds: number | number[],
+) {
+  const ids = Array.isArray(entityIds) ? entityIds : [entityIds];
+  if (ids.length === 0) return;
+  await db
+    .delete(schema.annotations)
+    .where(and(eq(schema.annotations.entityType, entityType), inArray(schema.annotations.entityId, ids)));
 }

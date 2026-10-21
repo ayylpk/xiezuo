@@ -2,6 +2,7 @@ import type { BunSQLiteDatabase } from "drizzle-orm/bun-sqlite";
 import { eq, inArray } from "drizzle-orm";
 
 import * as schema from "../db/schema";
+import { purgeAnnotations } from "./annotations";
 import { NotFoundError } from "./works";
 
 export type ForeshadowPatch = {
@@ -60,6 +61,7 @@ export async function deleteForeshadow(db: BunSQLiteDatabase<typeof schema>, id:
   const exists = await db.query.foreshadows.findFirst({ where: eq(schema.foreshadows.id, id), columns: { id: true } });
   if (!exists) throw new NotFoundError("伏笔不存在");
   await db.delete(schema.foreshadows).where(eq(schema.foreshadows.id, id));
+  await purgeAnnotations(db, "foreshadow", id);
 }
 
 async function assertWork(db: BunSQLiteDatabase<typeof schema>, workId: number) {

@@ -2,6 +2,7 @@ import type { BunSQLiteDatabase } from "drizzle-orm/bun-sqlite";
 import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 
 import * as schema from "../db/schema";
+import { purgeAnnotations } from "./annotations";
 import { NotFoundError } from "./works";
 
 /** 全量扁平列表（前端按 parentId 组树），排序：sortNo 稳定序 */
@@ -70,5 +71,7 @@ export async function deleteOutline(db: BunSQLiteDatabase<typeof schema>, id: nu
     frontier = children.map((c) => c.id).filter((cid) => !ids.has(cid));
     frontier.forEach((cid) => ids.add(cid));
   }
-  await db.delete(schema.outlines).where(inArray(schema.outlines.id, [...ids]));
+  const all = [...ids];
+  await db.delete(schema.outlines).where(inArray(schema.outlines.id, all));
+  await purgeAnnotations(db, "outline", all); // 整棵子树的批注一起清，不留孤儿
 }
