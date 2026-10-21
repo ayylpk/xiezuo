@@ -2,7 +2,9 @@
 #
 # 不装 devDependencies：运行只需要 drizzle-orm / hono / zod，测试在 CI 里跑。
 # 数据目录由 compose 挂到 /app/data；DB_PATH 指过去，db.ts 会自己 mkdir -p。
-FROM oven/bun:1-alpine
+# 基础镜像走 DaoCloud 国内源：Docker Hub 直连在本机/腾讯云都要几十分钟才拉得下来。
+# 换回官方只要删掉前缀，写成 oven/bun:1-alpine 即可。
+FROM docker.m.daocloud.io/oven/bun:1-alpine
 
 WORKDIR /app
 
