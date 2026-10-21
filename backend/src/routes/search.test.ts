@@ -92,7 +92,7 @@ describe("search", () => {
 
   test("命中设定 → 带类型前缀", async () => {
     const { hits } = await (await app.request(`/api/search?q=${encodeURIComponent("苏晴")}`, { headers: ctx() })).json();
-    expect(hits.some((h: { kind: string }) => h.kind === "entity" && h.title === "【人物】苏晴")).toBe(true);
+    expect(hits.some((h: { kind: string; title: string }) => h.kind === "entity" && h.title === "【人物】苏晴")).toBe(true);
   });
 
   test("命中大纲/伏笔/时间线/随笔", async () => {
@@ -106,7 +106,7 @@ describe("search", () => {
     expect(timeline.hits.some((h: { kind: string }) => h.kind === "timeline")).toBe(true);
 
     const note = await (await app.request(`/api/search?q=${encodeURIComponent("灵光一闪")}`, { headers: ctx() })).json();
-    expect(note.hits.some((h: { kind: string }) => h.kind === "note" && h.title.startsWith("【灵感】"))).toBe(true);
+    expect(note.hits.some((h: { kind: string; title: string }) => h.kind === "note" && h.title.startsWith("【灵感】"))).toBe(true);
   });
 
   test("workId 过滤：只看某一本", async () => {

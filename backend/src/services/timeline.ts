@@ -49,7 +49,7 @@ export async function updateTimeline(
   if (!exists) throw new NotFoundError("事件不存在");
   if (input.chapterId !== undefined && input.chapterId != null) await assertChapter(db, exists.workId, input.chapterId);
 
-  const set: Partial<schema.Timeline> = { updatedAt: Date.now() };
+  const set: Partial<typeof schema.timeline.$inferSelect> = { updatedAt: Date.now() };
   if (input.storyTime !== undefined) set.storyTime = input.storyTime;
   if (input.event !== undefined) set.event = input.event;
   if (input.chapterId !== undefined) set.chapterId = input.chapterId;

@@ -19,6 +19,10 @@ export type SearchHit = {
 const SNIPPET_WINDOW = 40; // 命中词前后各取 40 字符
 const PER_KIND_LIMIT = 30;
 
+// 库里的 type 是 text 列（string），查文案表时要按 string 索引，这里显式收宽
+const ENTITY_LABEL: Record<string, string> = schema.ENTITY_TYPES;
+const NOTE_LABEL: Record<string, string> = schema.NOTE_TYPES;
+
 /** 按优先级取第一个含命中词的字段，掐出前后窗口作为摘要 */
 function buildSnippet(fields: (string | null | undefined)[], q: string): string {
   for (const f of fields) {
@@ -55,7 +59,7 @@ export async function searchAll(db: BunSQLiteDatabase<typeof schema>, q: string,
     .where(inWork ? and(eq(schema.entities.workId, workId), or(like(schema.entities.name, kw), like(schema.entities.content, kw))) : or(like(schema.entities.name, kw), like(schema.entities.content, kw)))
     .limit(PER_KIND_LIMIT);
   for (const e of ents) {
-    hits.push({ kind: "entity", id: e.id, workId: e.workId, title: `【${schema.ENTITY_TYPES[e.type] ?? "设定"}】${e.name}`, snippet: buildSnippet([e.content, e.name], q) });
+    hits.push({ kind: "entity", id: e.id, workId: e.workId, title: `【${ENTITY_LABEL[e.type] ?? "设定"}】${e.name}`, snippet: buildSnippet([e.content, e.name], q) });
   }
 
   // 大纲：标题/内容命中
@@ -95,7 +99,7 @@ export async function searchAll(db: BunSQLiteDatabase<typeof schema>, q: string,
     .where(inWork ? and(eq(schema.notes.workId, workId), or(like(schema.notes.title, kw), like(schema.notes.content, kw))) : or(like(schema.notes.title, kw), like(schema.notes.content, kw)))
     .limit(PER_KIND_LIMIT);
   for (const n of notes) {
-    hits.push({ kind: "note", id: n.id, workId: n.workId, title: `【${schema.NOTE_TYPES[n.type] ?? "随笔"}】${n.title || n.content.slice(0, 16)}`, snippet: buildSnippet([n.content, n.title], q) });
+    hits.push({ kind: "note", id: n.id, workId: n.workId, title: `【${NOTE_LABEL[n.type] ?? "随笔"}】${n.title || n.content.slice(0, 16)}`, snippet: buildSnippet([n.content, n.title], q) });
   }
 
   return hits;

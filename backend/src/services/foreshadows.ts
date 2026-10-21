@@ -47,7 +47,7 @@ export async function updateForeshadow(db: BunSQLiteDatabase<typeof schema>, id:
   if (!exists) throw new NotFoundError("伏笔不存在");
   await assertChapters(db, exists.workId, [patch.plantedChapterId, patch.revealChapterId]);
 
-  const set: Partial<schema.Foreshadow> = { updatedAt: Date.now() };
+  const set: Partial<typeof schema.foreshadows.$inferSelect> = { updatedAt: Date.now() };
   if (patch.content !== undefined) set.content = patch.content;
   if (patch.status !== undefined) set.status = patch.status;
   if (patch.plantedChapterId !== undefined) set.plantedChapterId = patch.plantedChapterId;

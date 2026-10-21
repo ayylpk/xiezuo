@@ -108,7 +108,8 @@ router.post("/works/:workId/relations", async (c) => {
     return c.json({ relation: await createRelation(c.get("db"), workId.data, parsed.data) }, 201);
   } catch (e) {
     if (e instanceof NotFoundError) return c.json({ error: e.message }, 404);
-    if (e instanceof Error && e.message.includes("不属于") || e.message.includes("和自己")) {
+    // 括号不能省：少一层时 && 先结合，e 不是 Error 会直接抛 TypeError
+    if (e instanceof Error && (e.message.includes("不属于") || e.message.includes("和自己"))) {
       return c.json({ error: e.message }, 400);
     }
     throw e;
