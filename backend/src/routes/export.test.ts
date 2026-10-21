@@ -102,6 +102,20 @@ describe("export", () => {
     expect(JSON.stringify(data.annotations)).not.toContain("别书批注");
   });
 
+  test("json：随笔按最近更新在前导出", async () => {
+    const first = (
+      await (await app.request(`/api/works/${workId}/notes`, { method: "POST", headers: ctx(), body: JSON.stringify({ type: "note", content: "旧随笔" }) })).json()
+    ).note;
+    await Bun.sleep(5);
+    await app.request(`/api/works/${workId}/notes`, { method: "POST", headers: ctx(), body: JSON.stringify({ type: "idea", content: "新随笔" }) });
+    await Bun.sleep(5);
+    await app.request(`/api/notes/${first.id}`, { method: "PATCH", headers: ctx(), body: JSON.stringify({ content: "旧随笔刚改过" }) });
+
+    const data = await (await app.request(`/api/works/${workId}/export?format=json`, { headers: ctx() })).json();
+    expect(data.notes.length).toBe(2);
+    expect(data.notes[0].id).toBe(first.id);
+  });
+
   test("默认 format = md", async () => {
     const resp = await app.request(`/api/works/${workId}/export`, { headers: ctx() });
     expect(resp.headers.get("content-type")).toContain("text/markdown");

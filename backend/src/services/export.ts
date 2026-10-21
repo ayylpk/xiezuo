@@ -1,4 +1,4 @@
-import { and, eq, inArray, or } from "drizzle-orm";
+import { and, desc, eq, inArray, or } from "drizzle-orm";
 import type { BunSQLiteDatabase } from "drizzle-orm/bun-sqlite";
 
 import * as schema from "../db/schema";
@@ -30,9 +30,9 @@ async function loadBundle(db: BunSQLiteDatabase<typeof schema>, workId: number):
     db.select().from(schema.chapters).where(eq(schema.chapters.workId, workId)).orderBy(schema.chapters.sortNo),
     db.select().from(schema.entities).where(eq(schema.entities.workId, workId)).orderBy(schema.entities.sort),
     db.select().from(schema.outlines).where(eq(schema.outlines.workId, workId)).orderBy(schema.outlines.sortNo),
-    db.select().from(schema.foreshadows).where(eq(schema.foreshadows.workId, workId)).orderBy(schema.foreshadows.updatedAt),
+    db.select().from(schema.foreshadows).where(eq(schema.foreshadows.workId, workId)).orderBy(desc(schema.foreshadows.updatedAt)),
     db.select().from(schema.timeline).where(eq(schema.timeline.workId, workId)).orderBy(schema.timeline.sortNo),
-    db.select().from(schema.notes).where(eq(schema.notes.workId, workId)).orderBy(schema.notes.updatedAt),
+    db.select().from(schema.notes).where(eq(schema.notes.workId, workId)).orderBy(desc(schema.notes.updatedAt)),
   ]);
 
   // 批注是 (entity_type, entity_id) 多态挂载、没有 work_id 列：

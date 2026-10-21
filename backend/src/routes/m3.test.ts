@@ -136,6 +136,23 @@ describe("批注级联：宿主删了不留孤儿", () => {
   });
 });
 
+describe("notes 排序", () => {
+  test("最新更新的排在最前（按 updatedAt 倒序）", async () => {
+    const w = (await (await app.request("/api/works", { method: "POST", headers: ctx(), body: JSON.stringify({ title: "排序用例" }) })).json()).work;
+    const first = (
+      await (await app.request(`/api/works/${w.id}/notes`, { method: "POST", headers: ctx(), body: JSON.stringify({ type: "note", content: "先写的" }) })).json()
+    ).note;
+    await Bun.sleep(5); // 毫秒时间戳，避免同一毫秒内排序不确定
+    await app.request(`/api/works/${w.id}/notes`, { method: "POST", headers: ctx(), body: JSON.stringify({ type: "idea", content: "后写的" }) });
+    await Bun.sleep(5);
+    await app.request(`/api/notes/${first.id}`, { method: "PATCH", headers: ctx(), body: JSON.stringify({ content: "先写的，刚改过" }) });
+
+    const list = (await (await app.request(`/api/works/${w.id}/notes`, { headers: ctx() })).json()).notes;
+    expect(list[0].id).toBe(first.id); // 刚改过的浮到最前
+    expect(list[1].content).toBe("后写的");
+  });
+});
+
 describe("notes", () => {
   test("三种类型各建一条 + 类型过滤", async () => {
     for (const [type, content] of [

@@ -1,5 +1,5 @@
 import type { BunSQLiteDatabase } from "drizzle-orm/bun-sqlite";
-import { and, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 
 import * as schema from "../db/schema";
 import { purgeAnnotations } from "./annotations";
@@ -13,7 +13,7 @@ export async function listNotes(db: BunSQLiteDatabase<typeof schema>, workId: nu
     .select()
     .from(schema.notes)
     .where(and(eq(schema.notes.workId, workId), type ? eq(schema.notes.type, type) : undefined))
-    .orderBy(schema.notes.updatedAt);
+    .orderBy(desc(schema.notes.updatedAt)); // 最近写/改的浮到最前
 }
 
 export async function createNote(
