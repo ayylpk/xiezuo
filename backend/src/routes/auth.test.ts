@@ -35,6 +35,15 @@ function sidFrom(resp: Response) {
   return resp.headers.get("set-cookie")?.match(/sid=([a-f0-9]{64})/)?.[1];
 }
 
+describe("health", () => {
+  test("未登录也能探活——探针不该被鉴权拦（子路由 use(\"*\") 会吃 /api/*）", async () => {
+    const { app } = makeApp();
+    const resp = await app.request("/api/health");
+    expect(resp.status).toBe(200);
+    expect((await resp.json()).ok).toBe(true);
+  });
+});
+
 describe("auth", () => {
   test("未登录访问 /me → 401", async () => {
     const { app } = makeApp();

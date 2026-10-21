@@ -42,6 +42,10 @@ export function createApp(sqlite: Database = new Database(":memory:")) {
     await next();
   });
 
+  // 健康检查必须排在所有子路由之前：下面各 router 内部 use("*", auth()) 会先命中 /api/*，
+  // 注册在后面就会被鉴权拦成 401（部署探针会一直红）。
+  app.get("/api/health", (c) => c.json({ ok: true, ts: Date.now() }));
+
   // 路由前缀统一 /api
   app.route("/api/auth", authRoutes);
   app.route("/api/works", worksRoutes);
@@ -54,6 +58,5 @@ export function createApp(sqlite: Database = new Database(":memory:")) {
   app.route("/api", searchRoutes);
   app.route("/api", exportRoutes);
 
-  app.get("/api/health", (c) => c.json({ ok: true, ts: Date.now() }));
   return app;
 }
