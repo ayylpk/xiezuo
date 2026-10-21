@@ -106,8 +106,20 @@ jobs:
             # --global 会写进该用户的 ~/.gitconfig，后续运行都有效。
             git config --global --add safe.directory "${{ env.DEPLOY_DIR }}"
 
+            # 国内机房访问 github.com 时常被掐 TLS（GnuTLS recv error -110 /
+            # Connection was reset），而且是间歇性的 —— 重试三次能吸收大部分抖动。
+            # 注意：这里用 if 包住，git 失败不会触发 set -e 直接退出。
+            fetched=0
+            for i in 1 2 3 4 5; do
+              if git fetch --all --prune; then fetched=1; break; fi
+              echo "::warning::git fetch 第 $i 次失败（多为 TLS 中断），10 秒后重试"
+              sleep 10
+            done
+            if [ "$fetched" != "1" ]; then
+              echo "::error::连续 5 次拉取失败——服务器访问 github.com 被阻断，需要给 git 配代理或改用镜像地址"
+              exit 1
+            fi
             # git reset --hard 只回退被跟踪文件，不会动未跟踪的 data/（SQLite 数据）与 .env（口令）
-            git fetch --all --prune
             git reset --hard "${{ github.event.workflow_run.head_sha || github.sha }}"
 
             # 重建并滚动替换。数据在挂载的 ./data 里，容器换掉不影响。
