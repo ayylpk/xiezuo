@@ -1,5 +1,5 @@
 import type { BunSQLiteDatabase } from "drizzle-orm/bun-sqlite";
-import { eq, sql } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 
 import * as schema from "../db/schema";
 import { NotFoundError } from "./works";
@@ -67,11 +67,18 @@ async function assertWork(db: BunSQLiteDatabase<typeof schema>, workId: number) 
   if (!work) throw new NotFoundError("作品不存在");
 }
 
-/** 关联章节校验：id 过滤空值后必须全部存在且属于该作品 */
+/** 关联章节校验：id 过滤空值后必须全部存在，且都归属本作品（防跨作品挂载） */
 async function assertChapters(db: BunSQLiteDatabase<typeof schema>, workId: number, ids: (number | null | undefined)[]) {
-  const real = ids.filter((id): id is number => id != null);
+  const real = [...new Set(ids.filter((id): id is number => id != null))];
   if (real.length === 0) return;
-  const rows = await db.select({ id: schema.chapters.id }).from(schema.chapters).where(sql`${schema.chapters.id} IN ${real}`);
-  const found = new Set(rows.map((r) => r.id));
-  for (const id of real) if (!found.has(id)) throw new NotFoundError(`章节不存在: ${id}`);
+  const rows = await db
+    .select({ id: schema.chapters.id, workId: schema.chapters.workId })
+    .from(schema.chapters)
+    .where(inArray(schema.chapters.id, real));
+  const owner = new Map(rows.map((r) => [r.id, r.workId]));
+  for (const id of real) {
+    const ownerWorkId = owner.get(id);
+    if (ownerWorkId === undefined) throw new NotFoundError(`章节不存在: ${id}`);
+    if (ownerWorkId !== workId) throw new Error("章节不属于该作品");
+  }
 }

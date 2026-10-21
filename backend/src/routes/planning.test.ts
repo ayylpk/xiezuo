@@ -59,6 +59,29 @@ describe("foreshadows", () => {
     expect(resp.status).toBe(404);
   });
 
+  test("关联他人章节 → 400（归属校验，不能被挂到别的作品）", async () => {
+    const other = (await (await app.request("/api/works", { method: "POST", headers: ctx(), body: JSON.stringify({ title: "别处" }) })).json()).work;
+    const seen = await (
+      await app.request(`/api/works/${other.id}/chapters`, { method: "POST", headers: ctx(), body: JSON.stringify({ title: "外人章" }) })
+    ).json();
+    const atCreate = await app.request(`/api/works/${workId}/foreshadows`, {
+      method: "POST",
+      headers: ctx(),
+      body: JSON.stringify({ content: "跨作品埋设", plantedChapterId: seen.chapter.id }),
+    });
+    expect(atCreate.status).toBe(400);
+    expect((await atCreate.json()).error).toContain("不属于");
+
+    // patch 路径同样拦：已存在的伏笔不能被改挂到他人章节
+    const list = await (await app.request(`/api/works/${workId}/foreshadows`, { headers: ctx() })).json();
+    const atPatch = await app.request(`/api/foreshadows/${list.foreshadows[0].id}`, {
+      method: "PATCH",
+      headers: ctx(),
+      body: JSON.stringify({ revealChapterId: seen.chapter.id }),
+    });
+    expect(atPatch.status).toBe(400);
+  });
+
   test("收伏笔：patch status → closed", async () => {
     const list = await (await app.request(`/api/works/${workId}/foreshadows`, { headers: ctx() })).json();
     const id = list.foreshadows[0].id;
