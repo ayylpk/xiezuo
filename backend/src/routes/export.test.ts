@@ -84,6 +84,24 @@ describe("export", () => {
     expect(data.annotations[0].content).toContain("呼应");
   });
 
+  test("json：只带本作品的批注，不串别的书", async () => {
+    const other = (
+      await (await app.request("/api/works", { method: "POST", headers: ctx(), body: JSON.stringify({ title: "另一本" }) })).json()
+    ).work;
+    const otherCh = (
+      await (await app.request(`/api/works/${other.id}/chapters`, { method: "POST", headers: ctx(), body: JSON.stringify({ title: "外人章" }) })).json()
+    ).chapter;
+    await app.request("/api/annotations", {
+      method: "POST",
+      headers: ctx(),
+      body: JSON.stringify({ entityType: "chapter", entityId: otherCh.id, content: "别书批注不该出现" }),
+    });
+
+    const data = await (await app.request(`/api/works/${workId}/export?format=json`, { headers: ctx() })).json();
+    expect(data.annotations.length).toBe(1);
+    expect(JSON.stringify(data.annotations)).not.toContain("别书批注");
+  });
+
   test("默认 format = md", async () => {
     const resp = await app.request(`/api/works/${workId}/export`, { headers: ctx() });
     expect(resp.headers.get("content-type")).toContain("text/markdown");

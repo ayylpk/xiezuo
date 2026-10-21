@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq, inArray, or } from "drizzle-orm";
 import type { BunSQLiteDatabase } from "drizzle-orm/bun-sqlite";
 
 import * as schema from "../db/schema";
@@ -26,16 +26,30 @@ export type WorkBundle = {
 async function loadBundle(db: BunSQLiteDatabase<typeof schema>, workId: number): Promise<WorkBundle> {
   const work = await db.query.works.findFirst({ where: eq(schema.works.id, workId) });
   if (!work) throw new NotFoundError("作品不存在");
-  const [chapters, entities, outlines, foreshadows, timeline, notes, annotations] = await Promise.all([
+  const [chapters, entities, outlines, foreshadows, timeline, notes] = await Promise.all([
     db.select().from(schema.chapters).where(eq(schema.chapters.workId, workId)).orderBy(schema.chapters.sortNo),
     db.select().from(schema.entities).where(eq(schema.entities.workId, workId)).orderBy(schema.entities.sort),
     db.select().from(schema.outlines).where(eq(schema.outlines.workId, workId)).orderBy(schema.outlines.sortNo),
     db.select().from(schema.foreshadows).where(eq(schema.foreshadows.workId, workId)).orderBy(schema.foreshadows.updatedAt),
     db.select().from(schema.timeline).where(eq(schema.timeline.workId, workId)).orderBy(schema.timeline.sortNo),
     db.select().from(schema.notes).where(eq(schema.notes.workId, workId)).orderBy(schema.notes.updatedAt),
-    // 批注按实体挂载、无作品列，单用户场景全量带出
-    db.select().from(schema.annotations),
   ]);
+
+  // 批注是 (entity_type, entity_id) 多态挂载、没有 work_id 列：
+  // 用"本作品各类型实体的 id 集合"去捞，否则会把别的书的批注一起导出去。
+  const owned: [schema.AnnotationTarget, number[]][] = [
+    ["chapter", chapters.map((r) => r.id)],
+    ["entity", entities.map((r) => r.id)],
+    ["outline", outlines.map((r) => r.id)],
+    ["foreshadow", foreshadows.map((r) => r.id)],
+    ["timeline", timeline.map((r) => r.id)],
+    ["note", notes.map((r) => r.id)],
+  ];
+  const conds = owned
+    .filter(([, ids]) => ids.length > 0)
+    .map(([type, ids]) => and(eq(schema.annotations.entityType, type), inArray(schema.annotations.entityId, ids)));
+  const annotations = conds.length > 0 ? await db.select().from(schema.annotations).where(or(...conds)) : [];
+
   return { work, chapters, entities, outlines, foreshadows, timeline, notes, annotations };
 }
 
