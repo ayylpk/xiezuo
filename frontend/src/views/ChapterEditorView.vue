@@ -2,8 +2,6 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { DialogPlugin, MessagePlugin } from "tdesign-vue-next";
-import { marked } from "marked";
-import DOMPurify from "dompurify";
 
 import { CHAPTER_STATUS, useChaptersStore } from "../stores/chapters";
 import { useAnnotationsStore, type Annotation } from "../stores/annotations";
@@ -32,7 +30,6 @@ const annEditId = ref<number | null>(null);
 const annSaving = ref(false);
 
 const words = computed(() => content.value.replace(/\s/g, "").length);
-const previewHtml = computed(() => DOMPurify.sanitize(marked.parse(content.value) as string));
 
 // ---------- 加载 ----------
 onMounted(async () => {
@@ -170,21 +167,15 @@ function annConfirmRemove(a: Annotation) {
         <input v-model="synopsis" class="synopsis-input" placeholder="一句话剧情（本章摘要，可选）" maxlength="500" />
       </div>
 
-      <div class="split">
-        <!-- 左：稿纸写作区（字坐在行线上） -->
-        <div class="manuscript manuscript--write">
-          <textarea
-            v-model="content"
-            class="write-area"
-            placeholder="开始写作…（支持 Markdown，停笔 2 秒自动落盘）"
-            spellcheck="false"
-          />
-        </div>
-        <!-- 右：实时预览（marked + DOMPurify 防 XSS） -->
-        <div class="manuscript manuscript--preview">
-          <div class="xz-md" v-if="content" v-html="previewHtml" />
-          <p v-else class="preview-empty">预览会出现在这里</p>
-        </div>
+      <div class="manuscript">
+        <!-- 单栏写作区：居中 70%，左右各留 15% 空白。
+             textarea 原样保存换行符（\n），导出 md/txt 与这里打的完全一致。 -->
+        <textarea
+          v-model="content"
+          class="write-area"
+          placeholder="开始写作…（支持 Markdown，停笔 2 秒自动落盘）"
+          spellcheck="false"
+        />
       </div>
     </main>
 
@@ -241,13 +232,13 @@ function annConfirmRemove(a: Annotation) {
   display: flex;
   flex-direction: column;
   min-height: 0;
-  padding: 20px 32px 24px;
+  /* 左右空白不在这里给，交给下面 70% 居中；这样比例随屏幕走 */
+  padding: 20px 0 24px;
 }
 
-/* 卷首 */
+/* 卷首 + 稿纸：同宽 70%，左右各留 15% 屏幕空白 */
 .editor__head {
-  max-width: 680px;
-  width: 100%;
+  width: 70%;
   margin: 0 auto 16px;
 }
 .title-input {
@@ -280,82 +271,37 @@ function annConfirmRemove(a: Annotation) {
   color: var(--xz-ink-3);
 }
 
-.split {
-  flex: 1;
-  display: flex;
-  min-height: 0;
-  gap: 20px;
-}
-
-/* ---------- 稿纸：字坐在行线上（行高=线距） ---------- */
+/* ---------- 稿纸：单栏居中 ---------- */
 .manuscript {
   flex: 1;
-  min-width: 0;
+  width: 70%;
+  margin: 0 auto;
+  min-height: 0;
   overflow: auto;
   background-color: var(--xz-paper);
-  background-image: repeating-linear-gradient(180deg, transparent 0 35px, var(--xz-paper-line) 35px 36px);
-  border-radius: 2px 8px 8px 2px; /* 书卷形：订口侧小圆 */
+  /* 横线已按要求去掉：不再用 repeating-linear-gradient 画行线，
+     文字靠 line-height 保持行距，正文本身不带任何视觉干扰。 */
+  border-radius: 8px;
   box-shadow: var(--td-shadow-2);
-  padding: 18px 0 40px;
-}
-/* 顶部受光 */
-.manuscript::after {
-  content: "";
-  position: sticky;
-  top: 0;
-  display: block;
-  height: 0;
+  padding: 24px 0 40px;
 }
 .write-area {
   display: block;
   width: 100%;
-  max-width: 680px;
   height: 100%;
-  margin: 0 auto;
   border: none;
   outline: none;
   resize: none;
   background: transparent;
   font-family: "STKaiti", "KaiTi", "Noto Serif SC", serif;
   font-size: 17px;
-  line-height: 36px; /* 与稿纸行距同源：字坐线上 */
+  line-height: 36px;
   color: var(--xz-paper-ink);
-  padding: 0 28px;
+  /* 内边距按纸宽的百分比给，纸变宽时文字不会贴边 */
+  padding: 0 48px;
 }
 .write-area::placeholder {
   color: var(--xz-paper-ink-3);
-}
-
-/* 预览：同纸同墨 */
-.manuscript--preview {
-  padding: 0;
-}
-.manuscript--preview .xz-md {
-  max-width: 680px;
-  margin: 0 auto;
-  padding: 18px 28px 40px;
-  line-height: 36px;
-  color: var(--xz-paper-ink);
-}
-.preview-empty {
-  max-width: 680px;
-  margin: 18px auto 0;
-  padding: 0 28px;
-  color: var(--xz-paper-ink-3);
-  font-size: var(--xz-text-sm);
-}
-
-/* 预览内的墨色细化（纸上的强调/引用） */
-.manuscript--preview :deep(a) {
-  color: #5d7049;
-}
-.manuscript--preview :deep(blockquote) {
-  border-left-color: var(--xz-red);
-  color: var(--xz-paper-ink-2);
-}
-.manuscript--preview :deep(code) {
-  background: rgba(63, 58, 48, 0.07);
-  color: var(--xz-paper-ink);
 }
 
 /* ---------- 批注抽屉 ---------- */
@@ -400,13 +346,21 @@ function annConfirmRemove(a: Annotation) {
   line-height: 1.7;
 }
 
-/* 窄屏：收掉预览（写作优先），缩边距 */
-@media (max-width: 920px) {
-  .manuscript--preview {
-    display: none;
-  }
+/* 窄屏（手机/竖屏）：70% 没法写，铺满，纸的圆角和阴影也一并去掉 */
+@media (max-width: 768px) {
   .editor {
-    padding: 16px 16px 20px;
+    padding: 16px 0 20px;
+  }
+  .editor__head,
+  .manuscript {
+    width: 100%;
+  }
+  .manuscript {
+    border-radius: 0;
+    box-shadow: none;
+  }
+  .write-area {
+    padding: 0 20px;
   }
 }
 </style>
