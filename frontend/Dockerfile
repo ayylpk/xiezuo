@@ -8,7 +8,12 @@ FROM docker.m.daocloud.io/node:22-alpine AS build
 WORKDIR /app
 
 COPY package.json package-lock.json ./
-RUN npm ci
+# 服务器在国内，默认 registry.npmjs.org 拉包极慢（首次构建会卡十几分钟甚至超时）。
+# replace-registry-host=always 让 npm 把 lock 里写死的 registry.npmjs.org 也改写成镜像源，
+# 否则 npm ci 仍会照着 lock 里的 resolved 地址去拉，换 registry 等于白换。
+RUN npm config set registry https://registry.npmmirror.com \
+ && npm config set replace-registry-host always \
+ && npm ci
 
 COPY . .
 # vue-tsc -b && vite build：类型错误会让镜像构建直接失败，等价于一次免费的类型检查

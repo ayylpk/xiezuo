@@ -99,6 +99,10 @@ jobs:
           # 不要写 script_stop —— v1 已移除该参数，失败中断靠下面的 set -e
           script: |
             set -e
+            # 分段计时：日志里能看到每段耗时，失败时一眼看出卡在哪（构建慢 vs 健康检查失败）
+            t0=$(date +%s)
+            step() { echo "==== [$(date +%H:%M:%S) +$(( $(date +%s) - t0 ))s] $* ===="; }
+            step "进入部署目录"
             cd "${{ env.DEPLOY_DIR }}"
 
             # 目录可能是别人建的（比如 ubuntu 建、root 来部署），git 的 safe.directory
@@ -109,6 +113,7 @@ jobs:
             # 国内机房访问 github.com 时常被掐 TLS（GnuTLS recv error -110 /
             # Connection was reset），而且是间歇性的 —— 重试三次能吸收大部分抖动。
             # 注意：这里用 if 包住，git 失败不会触发 set -e 直接退出。
+            step "开始 git fetch"
             fetched=0
             for i in 1 2 3 4 5; do
               if git fetch --all --prune; then fetched=1; break; fi
@@ -119,11 +124,14 @@ jobs:
               echo "::error::连续 5 次拉取失败——服务器访问 github.com 被阻断，需要给 git 配代理或改用镜像地址"
               exit 1
             fi
+            step "git fetch 完成"
             # git reset --hard 只回退被跟踪文件，不会动未跟踪的 data/（SQLite 数据）与 .env（口令）
             git reset --hard "${{ github.event.workflow_run.head_sha || github.sha }}"
 
             # 重建并滚动替换。数据在挂载的 ./data 里，容器换掉不影响。
+            step "开始 docker compose build（前端要 npm ci + vite build，首次可能几分钟）"
             docker compose up -d --build
+            step "build + 启动完成"
 
             # 清掉被替换下来的旧镜像层，免得磁盘越跑越满
             docker image prune -f
