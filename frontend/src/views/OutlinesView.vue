@@ -100,26 +100,29 @@ function confirmRemove(o: Outline) {
       <div v-else class="tree">
         <template v-for="group in tree" :key="group.node.id">
           <div class="node node--vol" :style="{ paddingLeft: 16 + 'px' }">
-            <button class="node__title" @click="openEdit(group.node)">{{ group.node.title }}</button>
+            <button class="node__title" title="点击编辑" @click="openEdit(group.node)">{{ group.node.title }}</button>
             <span v-if="group.node.content" class="node__preview">{{ group.node.content }}</span>
             <span class="node__ops">
+              <t-button variant="text" size="small" @click="openEdit(group.node)">编辑</t-button>
               <t-button variant="text" size="small" @click="openCreate(group.node.id)">+子</t-button>
               <t-button variant="text" theme="danger" size="small" @click="confirmRemove(group.node)">删除</t-button>
             </span>
           </div>
           <template v-for="child in group.children" :key="child.node.id">
             <div class="node node--chap" :style="{ paddingLeft: 40 + 'px' }">
-              <button class="node__title" @click="openEdit(child.node)">{{ child.node.title }}</button>
+              <button class="node__title" title="点击编辑" @click="openEdit(child.node)">{{ child.node.title }}</button>
               <span v-if="child.node.content" class="node__preview">{{ child.node.content }}</span>
               <span class="node__ops">
+                <t-button variant="text" size="small" @click="openEdit(child.node)">编辑</t-button>
                 <t-button variant="text" size="small" @click="openCreate(child.node.id)">+子</t-button>
                 <t-button variant="text" theme="danger" size="small" @click="confirmRemove(child.node)">删除</t-button>
               </span>
             </div>
             <div v-for="grand in child.children" :key="grand.node.id" class="node node--beat" :style="{ paddingLeft: 64 + 'px' }">
-              <button class="node__title" @click="openEdit(grand.node)">{{ grand.node.title }}</button>
+              <button class="node__title" title="点击编辑" @click="openEdit(grand.node)">{{ grand.node.title }}</button>
               <span v-if="grand.node.content" class="node__preview">{{ grand.node.content }}</span>
               <span class="node__ops">
+                <t-button variant="text" size="small" @click="openEdit(grand.node)">编辑</t-button>
                 <t-button variant="text" theme="danger" size="small" @click="confirmRemove(grand.node)">删除</t-button>
               </span>
             </div>
@@ -137,7 +140,12 @@ function confirmRemove(o: Outline) {
           <t-select v-model="form.parentId" :options="parentOptions.map((o) => ({ value: o.id, label: o.title }))" clearable placeholder="顶层" />
         </t-form-item>
         <t-form-item label="内容 / 细纲">
-          <t-textarea v-model="form.content" :autosize="{ minRows: 3 }" maxlength="20000" placeholder="这层要发生什么、点睛之笔、注意点…" />
+          <t-textarea
+            v-model="form.content"
+            :autosize="{ minRows: 6, maxRows: 16 }"
+            maxlength="20000"
+            placeholder="这层要发生什么、点睛之笔、注意点…"
+          />
         </t-form-item>
         <t-button block theme="primary" @click="save">保存</t-button>
       </t-form>
@@ -214,6 +222,8 @@ function confirmRemove(o: Outline) {
 }
 .node__title:hover {
   color: var(--xz-green);
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }
 
 .node__preview {
@@ -221,9 +231,13 @@ function confirmRemove(o: Outline) {
   min-width: 0;
   color: var(--xz-ink-3);
   font-size: var(--xz-text-xs);
+  line-height: 1.55;
+  /* 两行截断：只显示一行时，改完内容在列表里几乎看不出差别 */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: normal;
 }
 .node__ops {
   flex-shrink: 0;
